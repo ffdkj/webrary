@@ -1,0 +1,18 @@
+# Runtime data
+data/
+**/target/
+**/__pycache__/
+*.pyc
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+nul
+*.tmp

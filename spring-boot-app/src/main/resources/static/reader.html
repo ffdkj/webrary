@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reader — BookReader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* ==========================================================
+       Reader — CSS Variables & Reset
+       ========================================================== */
+    :root {
+      --bg: #080808;
+      --surface: #121212;
+      --surface-elevated: #1a1a1a;
+      --primary: #5865f2;
+      --accent: #e7c785;
+      --text: #d4d4d4;
+      --text-heading: #ffffff;
+      --muted: #888888;
+      --muted-dark: #555555;
+      --border: #2a2a2a;
+      --border-light: #333333;
+      --danger: #ef4444;
+      --radius: 8px;
+      --radius-sm: 4px;
+      --radius-lg: 12px;
+      --transition: 0.2s ease;
+      --transition-slow: 0.3s ease;
+      --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-reading: 'Noto Serif SC', 'Georgia', 'Times New Roman', serif;
+    }
+
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: var(--font-ui);
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    button {
+      font-family: inherit;
+      font-size: inherit;
+      border: none;
+      background: none;
+      color: inherit;
+      cursor: pointer;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted-dark); }
+
+    /* ==========================================================
+       Layout
+       ========================================================== */
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ==========================================================
+       Toolbar
+       ========================================================== */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 48px;
+      padding: 0 12px;
+      flex-shrink: 0;
+      background: rgba(8, 8, 8, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+      gap: 8px;
+    }
+
+    .toolbar-left,
+    .toolbar-center,
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .toolbar-left { flex: 0 0 auto; }
+    .toolbar-center { flex: 1; justify-content: center; min-width: 0; overflow: hidden; }
+    .toolbar-right { flex: 0 0 auto; }
+
+    .toolbar-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius);
+      color: var(--muted);
+      transition: all var(--transition);
+      position: relative;
+    }
+    .toolbar-btn:hover { color: var(--text); background: var(--surface); }
+    .toolbar-btn:active { background: var(--surface-elevated); }
+    .toolbar-btn.active { color: var(--accent); }
+
+    .toolbar-btn svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .toolbar-divider {
+      width: 1px;
+      height: 24px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+
+    .toolbar-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-heading);
+      letter-spacing: -0.01em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+    }
+
+    .toolbar-subtitle {
+      font-size: 12px;
+      color: var(--muted);
+      margin-left: 8px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex-shrink: 1;
+    }
+
+    .font-size-display {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      min-width: 32px;
+      text-align: center;
+      user-select: none;
+    }
+
+    /* ==========================================================
+       Main Reader Area
+       ========================================================== */
+    .reader-area {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    /* EPUB viewer — epub.js renders an iframe inside #viewer */
+    #viewer {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #121212;
+    }
+
+    #viewer iframe {
+      width: 100% !important;
+      height: 100% !important;
+      border: none;
+      background: #121212;
+    }
+
+    /* PDF container */
+    .pdf-container {
+      width: 100%;
+      height: 100%;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 0;
+      gap: 16px;
+      background: #1a1a1a;
+    }
+
+    .pdf-page {
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+      border-radius: 2px;
+      background: #ffffff;
+    }
+
+    .pdf-page canvas {
+      display: block;
+      border-radius: 2px;
+    }
+
+    /* TXT reader */
+    .txt-reader {
+      width: 100%;
+      height: 100%;
+      overflow-y: auto;
+      padding: 48px 80px;
+      font-family: var(--font-reading);
+      font-size: 18px;
+      line-height: 1.85;
+      color: #d4d4d4;
+      background: #0d0d0d;
+      max-width: 820px;
+      margin: 0 auto;
+    }
+
+    .txt-chapter-header {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--accent);
+      margin: 32px 0 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      letter-spacing: 0.02em;
+    }
+
+    .txt-paragraph {
+      margin-bottom: 16px;
+      text-indent: 2em;
+      text-align: justify;
+    }
+
+    /* ==========================================================
+       TOC Sidebar
+       ========================================================== */
+    .toc-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 199;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--transition-slow);
+    }
+    .toc-overlay.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .toc-sidebar {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 300px;
+      height: 100vh;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      z-index: 200;
+      transform: translateX(100%);
+      transition: transform var(--transition-slow);
+      display: flex;
+      flex-direction: column;
+      box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5);
+    }
+    .toc-sidebar.open {
+      transform: translateX(0);
+    }
+
+    .toc-sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .toc-sidebar-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-heading);
+    }
+
+    .toc-sidebar-close {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      transition: all var(--transition);
+    }
+    .toc-sidebar-close:hover {
+      color: var(--text);
+      background: var(--surface-elevated);
+    }
+
+    .toc-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 0;
+    }
+
+    .toc-item {
+      display: block;
+      width: 100%;
+      padding: 10px 20px;
+      font-size: 13px;
+      color: var(--muted);
+      text-align: left;
+      transition: all var(--transition);
+      border-left: 3px solid transparent;
+      cursor: pointer;
+      line-height: 1.5;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .toc-item:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .toc-item.active {
+      color: var(--accent);
+      border-left-color: var(--accent);
+      background: rgba(231, 199, 133, 0.06);
+    }
+
+    .toc-item.toc-sub {
+      padding-left: 40px;
+      font-size: 12px;
+    }
+
+    /* ==========================================================
+       Loading Spinner
+       ========================================================== */
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      background: var(--bg);
+      z-index: 300;
+      transition: opacity var(--transition-slow);
+    }
+
+    .loading-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border-light);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    /* ==========================================================
+       Error State
+       ========================================================== */
+    .error-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      background: var(--bg);
+      z-index: 250;
+    }
+
+    .error-icon {
+      font-size: 48px;
+      opacity: 0.5;
+    }
+
+    .error-message {
+      font-size: 16px;
+      color: var(--danger);
+      text-align: center;
+      max-width: 400px;
+      line-height: 1.6;
+    }
+
+    .error-back-btn {
+      padding: 10px 24px;
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      transition: all var(--transition);
+    }
+    .error-back-btn:hover {
+      background: var(--surface-elevated);
+      border-color: var(--border-light);
+    }
+
+    /* ==========================================================
+       Responsive
+       ========================================================== */
+    @media (max-width: 800px) {
+      .toolbar-subtitle { display: none; }
+      .toc-sidebar { width: 280px; }
+      .txt-reader { padding: 32px 24px; font-size: 16px; }
+    }
+
+    @media (max-width: 480px) {
+      .toolbar { padding: 0 8px; }
+      .toolbar-center { display: none; }
+      .toc-sidebar { width: 100%; }
+      .pdf-container { padding: 8px 0; gap: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- ===== Toolbar ===== -->
+    <header class="toolbar" id="toolbar">
+      <div class="toolbar-left">
+        <a class="toolbar-btn" href="javascript:history.back()" title="返回">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15,18 9,12 15,6"/>
+          </svg>
+        </a>
+      </div>
+
+      <div class="toolbar-center">
+        <span class="toolbar-title" id="toolbarTitle">加载中...</span>
+        <span class="toolbar-subtitle" id="toolbarAuthor"></span>
+      </div>
+
+      <div class="toolbar-right">
+        <button class="toolbar-btn" id="tocBtn" title="目录" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+        </button>
+        <span class="toolbar-divider"></span>
+
+        <button class="toolbar-btn" id="fontSizeDown" title="缩小字体">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M5 12h14"/>
+          </svg>
+        </button>
+        <span class="font-size-display" id="fontSizeDisplay">16</span>
+        <button class="toolbar-btn" id="fontSizeUp" title="放大字体">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+        </button>
+
+        <span class="toolbar-divider" id="pageDivider"></span>
+
+        <button class="toolbar-btn" id="pagePrevBtn" title="上一页" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <polyline points="15,18 9,12 15,6"/>
+          </svg>
+        </button>
+        <button class="toolbar-btn" id="pageNextBtn" title="下一页" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <polyline points="9,18 15,12 9,6"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- ===== Reader Area ===== -->
+    <div class="reader-area" id="readerArea">
+      <!-- epub.js renders its iframe inside this div -->
+      <div id="viewer"></div>
+
+      <!-- Loading overlay -->
+      <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <span class="loading-text">加载中...</span>
+      </div>
+
+      <!-- Error state (hidden by default) -->
+      <div class="error-state" id="errorState" style="display:none;">
+        <div class="error-icon">⚠️</div>
+        <p class="error-message" id="errorMessage"></p>
+        <a class="error-back-btn" href="javascript:history.back()">返回书架</a>
+      </div>
+    </div>
+
+    <!-- ===== TOC Overlay + Sidebar ===== -->
+    <div class="toc-overlay" id="tocOverlay"></div>
+    <aside class="toc-sidebar" id="tocSidebar">
+      <div class="toc-sidebar-header">
+        <span class="toc-sidebar-title">目录</span>
+        <button class="toc-sidebar-close" id="tocClose" title="关闭">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="toc-list" id="tocList">
+        <span class="loading-text" style="display:block;padding:20px;">暂无目录</span>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ===== Vendor scripts (order matters: JSZip before epub.js) ===== -->
+  <script src="/vendor/jszip.min.js"></script>
+  <script src="/vendor/epub.min.js"></script>
+
+  <!-- ===== Reader logic (regular script, epub.js adds ePub globally) ===== -->
+  <script src="/js/reader.js"></script>
+</body>
+</html>

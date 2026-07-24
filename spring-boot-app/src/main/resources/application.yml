@@ -1,0 +1,35 @@
+spring:
+  datasource:
+    url: jdbc:sqlite:data/webrary.db
+    driver-class-name: org.sqlite.JDBC
+    username: ""
+    password: ""
+    hikari:
+      maximum-pool-size: 1
+      minimum-idle: 1
+      connection-timeout: 5000
+      idle-timeout: 30000
+      connection-init-sql: PRAGMA foreign_keys = ON
+
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+server:
+  port: 8080
+
+webrary:
+  upload-dir: data/uploads
+  calibre:
+    path: ebook-convert
