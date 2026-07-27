@@ -658,6 +658,55 @@
       else if (currentFormat === 'epub' && viewer && viewer.rendition) viewer.rendition.next();
     });
 
+    // Tap-zone page turning (click/touch on left/right edges)
+    (function () {
+      var tapStartX = 0, tapStartY = 0, tapStartTime = 0;
+      var suppressMouse = false;
+
+      var zoneL = document.createElement('div');
+      zoneL.className = 'reader-tap-zone reader-tap-left';
+      var zoneR = document.createElement('div');
+      zoneR.className = 'reader-tap-zone reader-tap-right';
+      dom.readerArea.appendChild(zoneL);
+      dom.readerArea.appendChild(zoneR);
+
+      function doPage(isPrev) {
+        if (currentFormat === 'pdf') {
+          if (isPrev) pdfPrevPage(); else pdfNextPage();
+        } else if (currentFormat === 'epub' && viewer && viewer.rendition) {
+          if (isPrev) viewer.rendition.prev(); else viewer.rendition.next();
+        }
+      }
+
+      function bindZone(el, isPrev) {
+        // Mouse
+        el.addEventListener('mousedown', function (e) {
+          if (suppressMouse) return;
+          tapStartX = e.clientX; tapStartY = e.clientY; tapStartTime = Date.now();
+        });
+        el.addEventListener('mouseup', function (e) {
+          if (suppressMouse) return;
+          var dt = Date.now() - tapStartTime;
+          var dx = Math.abs(e.clientX - tapStartX);
+          var dy = Math.abs(e.clientY - tapStartY);
+          if (dt < 300 && dx < 10 && dy < 10) doPage(isPrev);
+        });
+        // Touch
+        el.addEventListener('touchstart', function (e) {
+          var t = e.touches[0];
+          tapStartX = t.clientX; tapStartY = t.clientY; tapStartTime = Date.now();
+        }, { passive: true });
+        el.addEventListener('touchend', function () {
+          if (Date.now() - tapStartTime < 300) doPage(isPrev);
+          // Suppress synthesized mouse events after touch
+          suppressMouse = true;
+          setTimeout(function () { suppressMouse = false; }, 400);
+        });
+      }
+      bindZone(zoneL, true);
+      bindZone(zoneR, false);
+    })();
+
     // Keyboard shortcuts
     document.addEventListener('keydown', function (e) {
       // Don't handle when focus is in an input
