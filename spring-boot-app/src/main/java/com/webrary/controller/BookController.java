@@ -16,10 +16,19 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.PDFRenderer;
 
 @RestController
 @RequestMapping("/api/books")
@@ -278,6 +287,61 @@ public class BookController {
             return ApiResponse.success("Converted to EPUB", response);
         } catch (Exception e) {
             return ApiResponse.error("Conversion failed: " + e.getMessage());
+        }
+    }
+
+    /** PDF metadata endpoint — returns page count and document info */
+    @GetMapping("/{bookId}/pdf/info")
+    public ApiResponse<Map<String, Object>> getPdfInfo(@PathVariable Long bookId) {
+        Book book = bookRepository.findById(bookId)
+                .orElseThrow(() -> new RuntimeException("Book not found: " + bookId));
+        if (book.getFilePath() == null || !book.getFilePath().toLowerCase().endsWith(".pdf")) {
+            return ApiResponse.error("Not a PDF file");
+        }
+        Path filePath = Path.of(book.getFilePath());
+        if (!filePath.toFile().exists()) {
+            return ApiResponse.error("File not found");
+        }
+        try (PDDocument doc = Loader.loadPDF(filePath.toFile())) {
+            Map<String, Object> info = new HashMap<>();
+            info.put("totalPages", doc.getNumberOfPages());
+            if (doc.getDocumentInformation() != null) {
+                info.put("title", doc.getDocumentInformation().getTitle());
+                info.put("author", doc.getDocumentInformation().getAuthor());
+            }
+            return ApiResponse.success(info);
+        } catch (Exception e) {
+            return ApiResponse.error("Failed: " + e.getMessage());
+        }
+    }
+
+    /** Render a single PDF page as PNG */
+    @GetMapping("/{bookId}/pdf/page/{pageNum}")
+    public ResponseEntity<?> getPdfPage(@PathVariable Long bookId,
+                                         @PathVariable int pageNum,
+                                         @RequestParam(defaultValue = "144") int dpi) {
+        Book book = bookRepository.findById(bookId)
+                .orElseThrow(() -> new RuntimeException("Book not found: " + bookId));
+        if (book.getFilePath() == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("No file");
+        }
+        Path filePath = Path.of(book.getFilePath());
+        try (PDDocument doc = Loader.loadPDF(filePath.toFile())) {
+            if (pageNum < 1 || pageNum > doc.getNumberOfPages()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Page out of range");
+            }
+            PDFRenderer renderer = new PDFRenderer(doc);
+            BufferedImage image = renderer.renderImageWithDPI(pageNum - 1, dpi);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(image, "PNG", baos);
+            byte[] bytes = baos.toByteArray();
+            return ResponseEntity.ok()
+                    .contentType(MediaType.IMAGE_PNG)
+                    .header(HttpHeaders.CACHE_CONTROL, "max-age=" + (pageNum <= 10 ? 86400 : 3600))
+                    .body(bytes);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Render failed: " + e.getMessage());
         }
     }
 }

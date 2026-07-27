@@ -9,7 +9,9 @@ import com.webrary.dto.ZlibraryUserInfo;
 import okhttp3.*;
 import okhttp3.Dns;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
@@ -141,6 +143,25 @@ public class ZlibraryApiClient {
         }
     }
 
+    private byte[] executeForBytesWithProgress(Request request, java.util.function.Consumer<Long> onProgress) throws IOException {
+        try (Response response = httpClient.newCall(request).execute()) {
+            ResponseBody body = response.body();
+            if (body == null) return new byte[0];
+            long contentLength = body.contentLength();
+            InputStream is = body.byteStream();
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            int read;
+            long totalRead = 0;
+            while ((read = is.read(buffer)) != -1) {
+                baos.write(buffer, 0, read);
+                totalRead += read;
+                if (onProgress != null) onProgress.accept(totalRead);
+            }
+            return baos.toByteArray();
+        }
+    }
+
     /**
      * Log in with email and password.
      */
@@ -203,7 +224,13 @@ public class ZlibraryApiClient {
             if (options.containsKey("yearFrom")) formBuilder.add("yearFrom", String.valueOf(options.get("yearFrom")));
             if (options.containsKey("yearTo")) formBuilder.add("yearTo", String.valueOf(options.get("yearTo")));
             if (options.containsKey("languages")) formBuilder.add("languages", (String) options.get("languages"));
-            if (options.containsKey("extensions")) formBuilder.add("extensions", (String) options.get("extensions"));
+            if (options.containsKey("extensions")) {
+                @SuppressWarnings("unchecked")
+                List<String> exts = (List<String>) options.get("extensions");
+                for (String ext : exts) {
+                    formBuilder.add("extensions[]", ext);
+                }
+            }
             if (options.containsKey("order")) formBuilder.add("order", (String) options.get("order"));
             if (options.containsKey("page")) formBuilder.add("page", String.valueOf(options.get("page")));
             if (options.containsKey("limit")) formBuilder.add("limit", String.valueOf(options.get("limit")));
@@ -299,6 +326,21 @@ public class ZlibraryApiClient {
                 .build();
 
         return executeForBytes(request);
+    }
+
+    public byte[] downloadBookWithProgress(Long bookId, String hash, java.util.function.Consumer<Long> onProgress) throws IOException {
+        DownloadInfo downloadInfo = getDownloadLink(bookId, hash);
+        if (downloadInfo.getDownloadLink() == null) {
+            throw new IOException("No download link available");
+        }
+
+        Request request = new Request.Builder()
+                .url(downloadInfo.getDownloadLink())
+                .headers(buildHeaders())
+                .get()
+                .build();
+
+        return executeForBytesWithProgress(request, onProgress);
     }
 
     /**

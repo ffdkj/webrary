@@ -117,7 +117,7 @@ public class ZlibraryService {
         if (request.getYearFrom() != null) options.put("yearFrom", request.getYearFrom());
         if (request.getYearTo() != null) options.put("yearTo", request.getYearTo());
         if (request.getLanguages() != null) options.put("languages", request.getLanguages());
-        if (request.getExtensions() != null) options.put("extensions", request.getExtensions());
+        if (request.getExtensions() != null && !request.getExtensions().isEmpty()) options.put("extensions", request.getExtensions());
         if (request.getOrder() != null) options.put("order", request.getOrder());
         options.put("page", request.getPage() != null ? request.getPage() : 1);
         options.put("limit", request.getLimit() != null ? request.getLimit() : 10);
@@ -141,6 +141,13 @@ public class ZlibraryService {
         ZlibraryApiClient client = getClient(session);
         ensureLoggedIn(client);
         return client.downloadBook(bookId, hash);
+    }
+
+    public byte[] downloadBookWithProgress(HttpSession session, Long bookId, String hash,
+                                           java.util.function.Consumer<Long> onProgress) throws IOException {
+        ZlibraryApiClient client = getClient(session);
+        ensureLoggedIn(client);
+        return client.downloadBookWithProgress(bookId, hash, onProgress);
     }
 
     public ZlibraryUserInfo getProfile(HttpSession session) throws IOException {

@@ -15,6 +15,7 @@
   var PARAM_TITLE = params.get('title');
   var PARAM_AUTHOR = params.get('author');
   var PARAM_EXT = params.get('ext');
+  var PARAM_TOC_HREF = params.get('tocHref');
 
   var STREAM_URL = '/api/books/' + PARAM_BOOK_ID + '/stream';
   var META_URL = '/api/books/' + PARAM_BOOK_ID;
@@ -28,10 +29,8 @@
   var currentFormat = null;    // 'epub' | 'pdf' | 'txt'
   var fontSize = parseInt(localStorage.getItem('reader-font-size') || '18', 10);
   var tocData = [];
-  var pdfDoc = null;
   var pdfPageNum = 1;
   var pdfTotalPages = 0;
-  var pdfScale = 1.0;
 
   /* ================================================================
      DOM References
@@ -267,6 +266,7 @@
     }
 
     cleanupPreviousViewer();
+    dom.viewerDiv.style.display = '';
 
     // Fetch EPUB as ArrayBuffer — epub.js reads from memory without HTTP requests
     return fetch(STREAM_URL)
@@ -297,50 +297,29 @@
         // Font size
         rendition.themes.fontSize(fontSize + 'px');
 
-        // TOC — fetch from backend API (uses EbookParserService, most reliable)
-        var tocLoaded = false;
+        // TOC — fetch from backend API (EbookParserService)
         fetch(TOC_URL)
           .then(function (r) { return r.json(); })
           .then(function (resp) {
-            var list = resp && resp.data ? resp.data : (Array.isArray(resp) ? resp : []);
-            if (list && list.length) {
-              tocData = list.map(function (it) {
-                return { label: it.title || it.label || '', href: it.href || '', depth: it.depth || 0 };
-              });
-              tocLoaded = true;
-              renderToc();
+            if (!resp.success) {
+              console.warn('TOC fetch failed:', resp.message);
+              tocData = [];
+            } else {
+              var list = resp.data;
+              if (list && list.length) {
+                tocData = list.map(function (it) {
+                  return { label: it.title || '', href: it.href || '', depth: it.level || 0 };
+                });
+              } else {
+                tocData = [];
+              }
             }
-          }).catch(function () {});
-
-        // Fallback: epub.js navigation
-        book.loaded.navigation.then(function (nav) {
-          if (tocLoaded) return;
-          var toc = null;
-          if (nav) {
-            if (Array.isArray(nav)) toc = nav;
-            else if (nav.toc && Array.isArray(nav.toc)) toc = nav.toc;
-          }
-          if (toc && toc.length) {
-            tocData = flattenEpubToc(toc);
-            tocLoaded = true;
             renderToc();
-          }
-        }).catch(function () {});
-
-        // Last resort: spine sections
-        setTimeout(function () {
-          if (tocLoaded) return;
-          try {
-            var spine = book.spine;
-            if (spine && spine.items && spine.items.length) {
-              tocData = spine.items.map(function (it, i) {
-                return { label: it.label || it.title || ('章节 ' + (i + 1)), href: it.href || '', depth: 0 };
-              });
-              tocLoaded = true;
-            }
-          } catch (e) {}
-          renderToc();
-        }, 2000);
+          }).catch(function (err) {
+            console.error('TOC fetch error:', err);
+            tocData = [];
+            renderToc();
+          });
 
         // Progress tracking
         rendition.on('relocated', function (location) {
@@ -378,133 +357,110 @@
             renderToc();
           });
 
-          var saved = loadProgress();
-          if (saved && saved.cfi) {
+          // Navigate to chapter if specified via URL param (user-initiated, takes priority)
+          if (PARAM_TOC_HREF) {
             try {
-              rendition.display(saved.cfi);
-            } catch (e) {}
+              rendition.display(decodeURIComponent(PARAM_TOC_HREF));
+            } catch (e) { console.warn('Nav to chapter failed:', e); }
+          } else {
+            var saved = loadProgress();
+            if (saved && saved.cfi) {
+              try {
+                rendition.display(saved.cfi);
+              } catch (e) {}
+            }
           }
         });
       });
+  }
 
   /* ================================================================
      PDF.js Viewer
      ================================================================ */
   function initPdf() {
-    return import('/vendor/pdf.js/pdf.min.mjs').then(function (pdfjsModule) {
-      var pdfjsLib = pdfjsModule.default || pdfjsModule;
-      pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdf.js/pdf.worker.min.mjs';
+    cleanupPreviousViewer();
+    dom.viewerDiv.style.display = 'none';
 
-      cleanupPreviousViewer();
+    var container = document.createElement('div');
+    container.className = 'pdf-container';
+    container.id = 'pdfContainer';
+    dom.readerArea.appendChild(container);
 
-      var container = document.createElement('div');
-      container.className = 'pdf-container';
-      container.id = 'pdfContainer';
-      dom.readerArea.appendChild(container);
-
-      return pdfjsLib.getDocument(STREAM_URL).promise.then(function (doc) {
-        pdfDoc = doc;
-        pdfTotalPages = doc.numPages;
+    return fetch('/api/books/' + PARAM_BOOK_ID + '/pdf/info')
+      .then(function (r) { return r.json(); })
+      .then(function (resp) {
+        if (!resp.success) throw new Error(resp.message || 'Failed');
+        var info = resp.data;
+        pdfTotalPages = info.totalPages;
         pdfPageNum = 1;
 
-        // TOC from PDF outline
-        return doc.getOutline().then(function (outline) {
-          if (outline) {
-            tocData = flattenPdfOutline(outline);
+        // TOC from backend API
+        return fetch(TOC_URL).then(function (r) { return r.json(); }).then(function (tocResp) {
+          if (tocResp.success && tocResp.data && tocResp.data.length) {
+            tocData = tocResp.data.map(function (it, i) {
+              return {
+                label: it.title || '',
+                href: '#page-' + (it.chapterIndex != null ? it.chapterIndex + 1 : i + 1),
+                depth: it.level || 0,
+                page: it.chapterIndex != null ? it.chapterIndex + 1 : i + 1
+              };
+            });
           } else {
-            tocData = [];
             for (var i = 0; i < pdfTotalPages; i++) {
-              tocData.push({
-                label: '第 ' + (i + 1) + ' 页',
-                href: '#page-' + (i + 1),
-                depth: 0,
-                page: i + 1
-              });
+              tocData.push({ label: '第 ' + (i + 1) + ' 页', href: '#page-' + (i + 1), depth: 0, page: i + 1 });
             }
           }
           renderToc();
         }).catch(function () {
-          // No outline available, generate page-based TOC
           tocData = [];
           for (var i = 0; i < pdfTotalPages; i++) {
-            tocData.push({
-              label: '第 ' + (i + 1) + ' 页',
-              href: '#page-' + (i + 1),
-              depth: 0,
-              page: i + 1
-            });
+            tocData.push({ label: '第 ' + (i + 1) + ' 页', href: '#page-' + (i + 1), depth: 0, page: i + 1 });
           }
           renderToc();
-        }).then(function () {
-          // Restore progress
-          var saved = loadProgress();
-          if (saved && saved.page) {
-            pdfPageNum = Math.min(saved.page, pdfTotalPages);
-          }
-          return renderPdfPage(pdfPageNum);
-        }).then(function () {
-          updatePdfNavState();
-          dom.pageDivider.style.display = '';
-          dom.pagePrevBtn.style.display = '';
-          dom.pageNextBtn.style.display = '';
-          hideLoading();
-          viewer = { type: 'pdf' };
         });
+      })
+      .then(function () {
+        var saved = loadProgress();
+        if (saved && saved.page) pdfPageNum = Math.min(saved.page, pdfTotalPages);
+        return renderPdfPage(pdfPageNum);
+      })
+      .then(function () {
+        updatePdfNavState();
+        dom.pageDivider.style.display = '';
+        dom.pagePrevBtn.style.display = '';
+        dom.pageNextBtn.style.display = '';
+        hideLoading();
+        viewer = { type: 'pdf' };
+      })
+      .catch(function (err) {
+        showError('PDF 加载失败: ' + escapeHtml(err.message || ''));
       });
-    }).catch(function (err) {
-      showError('PDF 加载失败: ' + escapeHtml(err.message || ''));
-      throw err;
-    });
-  }
-
-  function flattenPdfOutline(items, depth) {
-    if (!depth) depth = 0;
-    var result = [];
-    items.forEach(function (item) {
-      result.push({
-        label: item.title,
-        href: String(item.dest || ''),
-        depth: depth
-      });
-      if (item.items && item.items.length > 0) {
-        var children = flattenPdfOutline(item.items, depth + 1);
-        result = result.concat(children);
-      }
-    });
-    return result;
   }
 
   function renderPdfPage(pageNum) {
-    var container = $('#pdfContainer');
+    var container = document.getElementById('pdfContainer');
     if (!container) return Promise.resolve();
 
-    // Remove existing pages
-    var existing = container.querySelectorAll('.pdf-page');
-    existing.forEach(function (el) { el.remove(); });
+    container.innerHTML = '';
 
-    return pdfDoc.getPage(pageNum).then(function (page) {
-      var viewport = page.getViewport({ scale: pdfScale });
-
-      var pageWrapper = document.createElement('div');
-      pageWrapper.className = 'pdf-page';
-      pageWrapper.id = 'page-' + pageNum;
-
-      var canvas = document.createElement('canvas');
-      var ctx = canvas.getContext('2d');
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
-
-      pageWrapper.appendChild(canvas);
-      container.appendChild(pageWrapper);
-
-      return page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function () {
+    return new Promise(function (resolve) {
+      var img = document.createElement('img');
+      img.className = 'pdf-page';
+      img.id = 'page-' + pageNum;
+      img.src = '/api/books/' + PARAM_BOOK_ID + '/pdf/page/' + pageNum + '?dpi=144';
+      img.style.cssText = 'display:block;margin:0 auto;max-width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.6);border-radius:2px;';
+      img.onload = function () {
         pdfPageNum = pageNum;
-        pageWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        img.scrollIntoView({ behavior: 'smooth', block: 'start' });
         saveProgress({ page: pageNum, totalPages: pdfTotalPages });
         updatePdfNavState();
-        });
-      });  // close .then(function(blob) { ... })
-  }  // close initEpub()
+        resolve();
+      };
+      img.onerror = function () {
+        resolve();
+      };
+      container.appendChild(img);
+    });
   }
 
   function updatePdfNavState() {
@@ -525,6 +481,7 @@
      ================================================================ */
   function initTxt() {
     cleanupPreviousViewer();
+    dom.viewerDiv.style.display = 'none';
 
     var txtReader = document.createElement('div');
     txtReader.className = 'txt-reader';
@@ -670,10 +627,13 @@
         if (href) {
           viewer.rendition.display(href);
         }
-      } else if (currentFormat === 'pdf' && pdfDoc) {
-        var page = href.replace('#page-', '');
-        if (page) {
-          renderPdfPage(parseInt(page, 10));
+      } else if (currentFormat === 'pdf') {
+        var idx = item ? parseInt(item.dataset.index) : -1;
+        if (idx >= 0 && tocData[idx] && tocData[idx].page) {
+          renderPdfPage(tocData[idx].page);
+        } else if (href) {
+          var page = href.replace('#page-', '');
+          if (page) renderPdfPage(parseInt(page, 10));
         }
       } else if (currentFormat === 'txt' && href) {
         var target = document.getElementById(href.replace('#', ''));

@@ -12,6 +12,7 @@ import java.util.Optional;
 public interface ShelfBookRepository extends JpaRepository<ShelfBook, Long> {
     List<ShelfBook> findByShelfOrderByAddedAtDesc(Bookshelf shelf);
     Optional<ShelfBook> findByShelfAndBook(Bookshelf shelf, Book book);
+    int countByShelf(Bookshelf shelf);
     boolean existsByShelfAndBook(Bookshelf shelf, Book book);
 
     @Modifying

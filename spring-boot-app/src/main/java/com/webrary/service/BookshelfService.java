@@ -35,7 +35,11 @@ public class BookshelfService {
     }
 
     public List<Bookshelf> listAll() {
-        return bookshelfRepository.findAllByOrderBySortOrderAsc();
+        List<Bookshelf> shelves = bookshelfRepository.findAllByOrderBySortOrderAsc();
+        for (Bookshelf shelf : shelves) {
+            shelf.setBookCount(shelfBookRepository.countByShelf(shelf));
+        }
+        return shelves;
     }
 
     @Transactional

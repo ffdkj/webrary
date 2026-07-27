@@ -5,6 +5,7 @@ import com.webrary.model.ShelfBook;
 import com.webrary.repository.BookRepository;
 import com.webrary.service.BookService;
 import com.webrary.service.CalibreConverter;
+import com.webrary.service.DownloadService;
 import com.webrary.service.ZlibraryService;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
@@ -19,8 +20,10 @@ import org.springframework.web.bind.annotation.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/zlibrary")
@@ -32,6 +35,7 @@ public class ZlibraryController {
     private final BookService bookService;
     private final BookRepository bookRepository;
     private final CalibreConverter calibreConverter;
+    private final DownloadService downloadService;
 
     @Value("${webrary.upload-dir:./data/uploads}")
     private String uploadDir;
@@ -71,6 +75,20 @@ public class ZlibraryController {
             return ApiResponse.success(profile);
         } catch (Exception e) {
             return ApiResponse.error("Failed to get profile: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/downloads-left")
+    public ApiResponse<Integer> getDownloadsLeft(HttpSession session) {
+        try {
+            if (!zlibraryService.isLoggedIn(session)) {
+                return ApiResponse.error("Not logged in");
+            }
+            ZlibraryUserInfo profile = zlibraryService.getProfile(session);
+            int left = profile.getDownloadsLimit() - profile.getDownloadsToday();
+            return ApiResponse.success(Math.max(0, left));
+        } catch (Exception e) {
+            return ApiResponse.error("Failed: " + e.getMessage());
         }
     }
 
@@ -356,5 +374,58 @@ public class ZlibraryController {
         } catch (Exception e) {
             return ApiResponse.error("Failed: " + e.getMessage());
         }
+    }
+
+    // ── Background Download Endpoints ──
+
+    @PostMapping("/download/start")
+    public ApiResponse<Map<String, String>> startBackgroundDownload(
+            @RequestBody Map<String, Object> request,
+            HttpSession session) {
+        try {
+            Long zlibId = Long.valueOf(request.get("zlibId").toString());
+            String zlibHash = (String) request.get("zlibHash");
+            String title = (String) request.get("title");
+            String author = (String) request.get("author");
+            String coverUrl = (String) request.get("coverUrl");
+            String extension = (String) request.get("extension");
+            Long filesize = request.get("filesize") != null
+                    ? Long.valueOf(request.get("filesize").toString()) : null;
+            String description = (String) request.get("description");
+
+            @SuppressWarnings("unchecked")
+            Object rawShelfIds = request.get("shelfIds");
+            List<Long> shelfIds = null;
+            if (rawShelfIds instanceof List<?> rawList) {
+                shelfIds = new java.util.ArrayList<>();
+                for (Object item : rawList) {
+                    if (item instanceof Number n) {
+                        shelfIds.add(n.longValue());
+                    } else if (item instanceof String s) {
+                        shelfIds.add(Long.valueOf(s));
+                    }
+                }
+            }
+
+            String taskId = downloadService.startDownload(
+                    session, zlibId, zlibHash, title, author, coverUrl,
+                    extension, filesize, description, shelfIds);
+
+            return ApiResponse.success(Map.of("taskId", taskId));
+        } catch (Exception e) {
+            return ApiResponse.error("Failed: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/download/status/{taskId}")
+    public ApiResponse<DownloadTask> getDownloadStatus(@PathVariable String taskId) {
+        DownloadTask task = downloadService.getTask(taskId);
+        if (task == null) return ApiResponse.error("Task not found: " + taskId);
+        return ApiResponse.success(task);
+    }
+
+    @GetMapping("/download/list")
+    public ApiResponse<List<DownloadTask>> getDownloadList() {
+        return ApiResponse.success(downloadService.getAllTasks());
     }
 }

@@ -31,10 +31,13 @@
     detailBook: null,
     browseBooks: [],
     detailToc: [],
+    tocCache: {}, // bookId → TocEntry[]
     detailProgress: null,
     // Download-to-shelf modal
     downloadTargetBook: null,
     selectedShelfIds: [],
+    downloadTasks: [],
+    downloadPollTimer: null,
     // Auth
     user: null,
     // Browse page mode
@@ -273,6 +276,16 @@
     return api(`/zlibrary/book/${bookId}/${hash}/download/file`);
   }
 
+  /* -- Background Download -- */
+  async function startBackgroundDownload(params) {
+    return api('/zlibrary/download/start', { method: 'POST', body: JSON.stringify(params) });
+  }
+
+  async function fetchDownloadList() {
+    const resp = await api('/zlibrary/download/list');
+    return resp && resp.data ? resp.data : [];
+  }
+
   /* -- Book TOC -- */
   async function fetchBookToc(bookId) {
     try {
@@ -343,7 +356,7 @@
     const span = dom.loginBtn.querySelector('span');
     if (state.isLoggedIn) {
       dom.loginBtn.classList.add('logged-in');
-      span.textContent = 'Z-Library 已绑定';
+      span.textContent = 'Z-Library · 剩余--次';
       dom.loginBtn.title = '已绑定 Z-Library\n点击重新绑定';
       dom.loginBtn.onclick = handleLogout;
     } else {
@@ -453,6 +466,14 @@
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+  }
+
+  function formatFileSize(bytes) {
+    if (bytes == null || bytes === 0) return '0 B';
+    const u = ['B', 'KB', 'MB', 'GB'];
+    let i = 0, v = bytes;
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return v.toFixed(1) + ' ' + u[i];
   }
 
   /* ================================================================
@@ -607,6 +628,8 @@
   async function refreshAll() {
     if (state.currentPage === 'browse') {
       await loadBrowseBooks();
+    } else if (state.currentPage === 'downloads') {
+      await loadDownloadTasks();
     } else if (state.currentPage === 'detail' || state.currentPage === 'reader') {
       if (state.detailBook) await renderDetailPage();
     } else {
@@ -1028,7 +1051,7 @@
       yearFrom: $('#filterYearFrom').value || undefined,
       yearTo: $('#filterYearTo').value || undefined,
       languages: $('#filterLanguage').value || undefined,
-      extensions: $('#filterExtension').value || undefined,
+      extensions: $('#filterExtension').value ? [$('#filterExtension').value] : undefined,
       order: $('#filterOrder').value || undefined,
       page: 1,
       limit: 20,
@@ -1186,7 +1209,7 @@
   /* ================================================================
      Book Card Interactions
      ================================================================ */
-  function handleBookClick(e) {
+  async function handleBookClick(e) {
     const card = e.target.closest('.book-card');
     if (!card) return;
 
@@ -1198,10 +1221,11 @@
     const source = card.dataset.source || 'shelf';
     const zlibId = card.dataset.zlibId || (source === 'zlib' ? card.dataset.bookId : null);
     const zlibHash = card.dataset.hash || '';
+    const bookId = card.dataset.bookBookid;
 
     const bookData = {
       id: card.dataset.bookId,
-      bookId: card.dataset.bookBookid,
+      bookId: bookId,
       title: card.dataset.title,
       author: card.dataset.author || '',
       coverUrl: card.dataset.cover || '',
@@ -1214,7 +1238,27 @@
       source: source === 'zlib' ? 'Z-Library' : '本地书库',
       readOnlineUrl: card.dataset.readonlineUrl || '',
     };
-    showBookDetail(bookData);
+
+    // Pre-fetch TOC for shelf books before navigating
+    if (source === 'shelf' && bookId) {
+      let toc = state.tocCache[bookId];
+      if (!toc) {
+        try {
+          const resp = await fetchBookToc(bookId);
+          if (resp && Array.isArray(resp)) {
+            toc = resp;
+          } else if (resp && resp.data && Array.isArray(resp.data)) {
+            toc = resp.data;
+          }
+          if (toc) state.tocCache[bookId] = toc;
+        } catch (e) {
+          // Pre-fetch failed — loadDetailToc will fallback
+        }
+      }
+      if (toc) bookData.toc = toc;
+    }
+
+    navigateTo('detail', bookData);
   }
 
   function showBookDetail(bookData) {
@@ -1438,6 +1482,9 @@
       case 'reader':
         navigateTo('reader');
         break;
+      case 'downloads':
+        navigateTo('downloads');
+        break;
       default:
         // Other pages (history, downloads, settings, about) — placeholder
         showToast('该功能正在开发中', 'info');
@@ -1470,13 +1517,14 @@
     // Show/hide page sections
     const isShelf = page === 'shelf';
     const isBrowse = page === 'browse';
+    const isDownloads = page === 'downloads';
     const isDetail = page === 'detail' || page === 'reader';
 
     // Tab bar visible only in shelf mode
     dom.tabBarWrapper.classList.toggle('hidden', !isShelf);
 
-    // Books container visible in shelf or browse mode
-    dom.booksContainer.style.display = (isShelf || isBrowse) ? '' : 'none';
+    // Books container visible in shelf, browse, or downloads mode
+    dom.booksContainer.style.display = (isShelf || isBrowse || isDownloads) ? '' : 'none';
 
     // Detail page visible in detail mode
     dom.detailPage.style.display = isDetail ? '' : 'none';
@@ -1495,6 +1543,11 @@
       dom.uploadBtn.style.display = 'none';
       dom.refreshBtn.style.display = '';
       dom.totalBookCount.style.display = 'none';
+    } else if (isDownloads) {
+      dom.searchBtn.style.display = 'none';
+      dom.uploadBtn.style.display = 'none';
+      dom.refreshBtn.style.display = '';
+      dom.totalBookCount.style.display = 'none';
     } else {
       // Shelf
       dom.searchBtn.style.display = '';
@@ -1503,7 +1556,6 @@
       dom.totalBookCount.style.display = '';
     }
 
-    updateHeader();
     dom.mainContent.style.background = isDetail ? '#080808' : '';
 
     switch (page) {
@@ -1523,9 +1575,15 @@
       case 'browse':
         if (state.browseMode === 'search') {
           renderBrowseBooks();
+          updateDownloadLimit();
         } else {
           loadBrowseBooks();
         }
+        break;
+      case 'downloads':
+        stopDownloadPolling();
+        loadDownloadTasks();
+        startDownloadPolling();
         break;
       case 'detail':
         if (data) {
@@ -1534,6 +1592,7 @@
         }
         break;
     }
+    updateHeader();
   }
 
   function updateHeader() {
@@ -1555,6 +1614,9 @@
         dom.headerTitle.textContent = (book && book.title) ? book.title : '书籍详情';
         break;
       }
+      case 'downloads':
+        dom.headerTitle.textContent = '下载';
+        break;
     }
   }
 
@@ -1569,10 +1631,26 @@
   /* ================================================================
      Browse Page
      ================================================================ */
+  async function updateDownloadLimit() {
+    const span = dom.loginBtn.querySelector('span');
+    try {
+      const resp = await api('/zlibrary/downloads-left');
+      if (resp && resp.success && resp.data != null) {
+        span.textContent = 'Z-Library · 剩余' + resp.data + '次';
+      } else {
+        console.warn('Downloads-left api failed:', resp);
+      }
+    } catch (e) {
+      console.warn('Downloads-left error:', e.message);
+    }
+  }
+
   async function loadBrowseBooks() {
     showLoading();
     state.browseMode = 'popular';
     try {
+      // Fetch download limit in parallel
+      updateDownloadLimit();
       const resp = await fetchMostPopular();
       if (resp && resp.success && resp.data && resp.data.books) {
         state.browseBooks = resp.data.books;
@@ -1646,6 +1724,11 @@
   async function renderDetailPage() {
     const book = state.detailBook;
     if (!book) return;
+    console.log('renderDetailPage: rendering book', book.id, book.title);
+
+    // Clear stale state from previous detail view
+    state.detailToc = [];
+    state.detailProgress = null;
 
     // Set readOnlineUrl from book data immediately (Z-Library search results include it)
     if (book.readOnlineUrl && !book._readOnlineUrl) {
@@ -1709,6 +1792,12 @@
       dom.detailDesc.style.display = 'none';
     }
 
+    // TOC — render pre-fetched data immediately if available (before tags to survive tags failure)
+    if (book.toc && Array.isArray(book.toc) && book.toc.length > 0) {
+      state.detailToc = book.toc;
+      renderToc();
+    }
+
     // Tags
     const tags = [];
     if (book.extension) tags.push(book.extension.toUpperCase());
@@ -1723,25 +1812,70 @@
       ? tags.map((t) => `<span class="detail-tag">${escapeHtml(t)}</span>`).join('')
       : '<span class="detail-tag">未分类</span>';
 
-    // TOC
-    await loadDetailToc();
+    // Also run loadDetailToc for fallback / lazy fetch (will no-op if already rendered)
+    try {
+      await loadDetailToc();
+    } catch (e) {
+      console.error('renderDetailPage: loadDetailToc error', e);
+    }
 
     // Continue reading button
-    await loadDetailProgress();
+    try {
+      await loadDetailProgress();
+    } catch (e) {
+      console.error('renderDetailPage: loadDetailProgress error', e);
+    }
 
     // Load additional metadata from API
-    loadDetailMetadata();
+    try {
+      loadDetailMetadata();
+    } catch (e) {
+      console.error('renderDetailPage: loadDetailMetadata error', e);
+    }
   }
 
   async function loadDetailToc() {
     const book = state.detailBook;
+    if (!book) { console.warn('loadDetailToc: no book'); return; }
+
+    // Never call local TOC API for Z-Library browse/search books
+    if (book.source !== '本地书库') {
+      const totalPages = book.pages || 1;
+      const pageCount = Math.min(totalPages, 20);
+      const toc = Array.from({ length: pageCount }, (_, i) => ({
+        title: `第${i + 1}页`,
+        index: i + 1,
+        createdAt: null,
+      }));
+      if (state.detailToc !== toc) {
+        state.detailToc = toc;
+        renderToc();
+      }
+      return;
+    }
+
     let toc = [];
 
-    // Try to fetch TOC from book
-    if (book.id && !book.zlibId) {
-      const resp = await fetchBookToc(book.id);
-      if (resp && Array.isArray(resp)) toc = resp;
-      else if (resp && resp.data && Array.isArray(resp.data)) toc = resp.data;
+    // Check tocCache or book.toc (pre-fetched in handleBookClick)
+    const cached = state.tocCache[book.bookId] || book.toc;
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      toc = cached;
+    } else {
+      const entityId = book.bookId;
+      if (entityId) {
+        try {
+          const resp = await fetchBookToc(entityId);
+          if (resp && Array.isArray(resp)) {
+            toc = resp;
+            state.tocCache[entityId] = resp;
+          } else if (resp && resp.data && Array.isArray(resp.data)) {
+            toc = resp.data;
+            state.tocCache[entityId] = resp.data;
+          }
+        } catch (e) {
+          // fetch failed, fall through to placeholder
+        }
+      }
     }
 
     // If no TOC, generate placeholder
@@ -1755,8 +1889,11 @@
       }));
     }
 
-    state.detailToc = toc;
-    renderToc();
+    // Only re-render if toc changed (prevent overwriting a previously rendered real TOC)
+    if (state.detailToc !== toc) {
+      state.detailToc = toc;
+      renderToc();
+    }
   }
 
   function renderToc() {
@@ -1775,7 +1912,7 @@
         const progress = item.progressPercent || item.percentage || 0;
 
         return `
-        <div class="toc-item" data-index="${i}">
+        <div class="toc-item" data-index="${i}" data-href="${escapeHtml(item.href || '')}" data-chapterindex="${escapeHtml(String(item.chapterIndex != null ? item.chapterIndex : i))}">
           <div class="toc-item-info">
             <div class="toc-item-title">${escapeHtml(title)}</div>
             ${date ? `<div class="toc-item-date">${escapeHtml(date)}</div>` : ''}
@@ -1796,10 +1933,12 @@
 
   async function loadDetailProgress() {
     const book = state.detailBook;
-    if (!book || !book.id) return;
+    if (!book || book.source !== '本地书库') return;
+    const entityId = book?.bookId || book?.id;
+    if (!entityId) return;
 
     try {
-      const progress = await getBookProgress(book.id);
+      const progress = await getBookProgress(entityId);
       state.detailProgress = progress;
     } catch {
       state.detailProgress = null;
@@ -1817,8 +1956,17 @@
     const book = state.detailBook;
     if (!book.zlibId || !book.zlibHash) return;
 
+    // Capture identity for stale check after async
+    const identity = book.zlibId + '|' + book.zlibHash + '|' + (book.bookId || book.id);
+
     try {
       const resp = await fetchZlibBookDetail(book.zlibId, book.zlibHash);
+
+      // Guard: if navigated to a different book since the request started, discard
+      const current = state.detailBook;
+      const currentId = (current?.zlibId || '') + '|' + (current?.zlibHash || '') + '|' + (current?.bookId || current?.id || '');
+      if (currentId !== identity) return;
+
       // Response: {success, data: {success:1, book: {title, author, ...}}}
       const raw = resp?.data;
       const d = raw?.book || raw; // Z-Library response nests under 'book'
@@ -1977,7 +2125,7 @@
   function handleShelfCheckboxClick(e) {
     const item = e.target.closest('.shelf-checkbox-item');
     if (!item) return;
-    const shelfId = item.dataset.shelfId;
+    const shelfId = parseInt(item.dataset.shelfId);
     const idx = state.selectedShelfIds.indexOf(shelfId);
     if (idx >= 0) {
       state.selectedShelfIds.splice(idx, 1);
@@ -2008,9 +2156,8 @@
       description: book.description || '',
     };
 
-    let successCount = 0;
-    let errorCount = 0;
-
+    // Add to selected shelves
+    let successCount = 0, errorCount = 0;
     for (const shelfId of state.selectedShelfIds) {
       try {
         await addBookToShelf(shelfId, bookData);
@@ -2020,15 +2167,7 @@
       }
     }
 
-    // Also download Z-Library file to server
-    if (book.zlibId && book.zlibHash) {
-      try {
-        await downloadZlibBook(book.zlibId, book.zlibHash);
-      } catch {
-        // Download may fail silently
-      }
-    }
-
+    // Close modal immediately — user is unblocked
     hideModal('downloadShelf');
 
     if (successCount > 0) {
@@ -2037,6 +2176,40 @@
     }
     if (errorCount > 0) {
       showToast(`${errorCount} 个书架添加失败`, 'error');
+    }
+
+    // Fire background download — non-blocking, progress shown in downloads page
+    if (book.zlibId && book.zlibHash) {
+      try {
+        const resp = await startBackgroundDownload({
+          zlibId: Number(book.zlibId),
+          zlibHash: book.zlibHash,
+          title: bookData.title,
+          author: bookData.author,
+          coverUrl: bookData.coverUrl,
+          extension: bookData.extension,
+          filesize: bookData.filesize,
+          description: bookData.description,
+          shelfIds: state.selectedShelfIds,
+        });
+        if (resp && resp.success && resp.data && resp.data.taskId) {
+          state.downloadTasks.unshift({
+            taskId: resp.data.taskId,
+            title: bookData.title,
+            author: bookData.author,
+            coverUrl: bookData.coverUrl,
+            extension: bookData.extension,
+            totalBytes: bookData.filesize,
+            downloadedBytes: 0,
+            status: 'DOWNLOADING',
+            createdAt: new Date().toISOString(),
+          });
+          showToast('已加入下载队列', 'success');
+          if (state.currentPage === 'downloads') renderDownloadsPage();
+        }
+      } catch (e) {
+        showToast('下载启动失败', 'error');
+      }
     }
   }
 
@@ -2090,6 +2263,99 @@
         e.preventDefault();
         executeSearch();
       }
+    }
+  }
+
+  /* ================================================================
+     Downloads Page
+     ================================================================ */
+  async function loadDownloadTasks() {
+    try {
+      const list = await fetchDownloadList();
+      // Merge with existing local tasks (preserve in-progress tasks that might be newer locally)
+      const merged = new Map();
+      for (const t of state.downloadTasks) merged.set(t.taskId, t);
+      for (const t of list) {
+        if (merged.has(t.taskId)) {
+          // Backend has authoritative progress
+          merged.set(t.taskId, { ...merged.get(t.taskId), ...t });
+        } else {
+          merged.set(t.taskId, t);
+        }
+      }
+      state.downloadTasks = Array.from(merged.values())
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    } catch (e) {
+      // keep existing state
+    }
+    renderDownloadsPage();
+  }
+
+  function renderDownloadsPage() {
+    const tasks = state.downloadTasks;
+    dom.emptyState.style.display = 'none';
+    dom.booksGrid.style.display = tasks.length === 0 ? 'none' : 'grid';
+
+    if (tasks.length === 0) {
+      dom.booksGrid.innerHTML = '';
+      dom.emptyState.style.display = 'flex';
+      dom.emptyState.querySelector('p:first-of-type').textContent = '暂无下载任务';
+      dom.emptyState.querySelector('.text-muted').textContent = '从 Z-Library 添加书籍后下载任务会在此显示';
+      return;
+    }
+
+    dom.emptyState.style.display = 'none';
+    dom.booksGrid.innerHTML = tasks
+      .map((t) => {
+        const pct = t.totalBytes > 0 ? Math.round((t.downloadedBytes / t.totalBytes) * 100) : 0;
+        const statusText = {
+          DOWNLOADING: '下载中',
+          CONVERTING: '格式转换中',
+          SAVING: '保存中',
+          COMPLETED: '已完成',
+          FAILED: '失败',
+        }[t.status] || t.status || '等待中';
+        const isActive = t.status === 'DOWNLOADING' || t.status === 'CONVERTING' || t.status === 'SAVING';
+        const isFailed = t.status === 'FAILED';
+
+        return `
+        <div class="book-card download-card" data-task-id="${escapeHtml(t.taskId)}">
+          <div class="cover-wrapper">
+            ${t.coverUrl
+              ? `<img class="cover-img" src="${escapeHtml(t.coverUrl)}" alt="" loading="lazy">`
+              : `<div class="cover-placeholder" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:var(--panel);color:var(--muted);font-size:32px;">📥</div>`
+            }
+            <div class="cover-overlay"></div>
+          </div>
+          <div class="book-title">${escapeHtml(t.title || '未命名')}</div>
+          ${t.author ? `<div class="book-author">${escapeHtml(t.author)}</div>` : ''}
+          <div class="download-progress-section">
+            <div class="download-progress-bar-wrapper">
+              <div class="download-progress-bar${isFailed ? ' failed' : ''}" style="width:${isActive ? pct : 100}%"></div>
+            </div>
+            <div class="download-progress-info">
+              <span class="download-progress-status${isFailed ? ' failed' : ''}">${statusText}</span>
+              <span class="download-progress-size">${isActive ? formatFileSize(t.downloadedBytes) + ' / ' + formatFileSize(t.totalBytes) : formatFileSize(t.totalBytes)}</span>
+            </div>
+            ${t.errorMessage ? `<div class="download-error">${escapeHtml(t.errorMessage)}</div>` : ''}
+          </div>
+        </div>`;
+      })
+      .join('');
+  }
+
+  function startDownloadPolling() {
+    stopDownloadPolling();
+    state.downloadPollTimer = setInterval(async () => {
+      if (state.currentPage !== 'downloads') return;
+      await loadDownloadTasks();
+    }, 2000);
+  }
+
+  function stopDownloadPolling() {
+    if (state.downloadPollTimer) {
+      clearInterval(state.downloadPollTimer);
+      state.downloadPollTimer = null;
     }
   }
 
@@ -2236,12 +2502,23 @@
       renderToc();
     });
 
-    // Detail page — TOC item click
+    // Detail page — TOC item click → open reader at chapter
     dom.tocList.addEventListener('click', (e) => {
       const item = e.target.closest('.toc-item');
       if (!item) return;
       if (e.target.closest('.toc-item-options')) return;
-      showToast('跳转到阅读器（功能开发中）', 'info');
+      const href = item.dataset.href;
+      if (!href) return;
+      const book = state.detailBook;
+      if (!book) return;
+      const entityId = book.bookId || book.id;
+      const title = encodeURIComponent(book.title || '');
+      const author = encodeURIComponent(book.author || '');
+      const ext = encodeURIComponent(book.extension || '');
+      window.open(
+        `/reader.html?bookId=${entityId}&title=${title}&author=${author}&ext=${ext}&tocHref=${encodeURIComponent(href)}`,
+        '_blank'
+      );
     });
 
     // Detail page — continue reading

@@ -1,5 +1,6 @@
 package com.webrary.dto;
 
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,7 +15,7 @@ public class SearchRequest {
     private Integer yearFrom;
     private Integer yearTo;
     private String languages;
-    private String extensions;
+    private List<String> extensions;
     private String order;
     private Integer page;
     private Integer limit;

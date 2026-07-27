@@ -4,6 +4,7 @@ import com.webrary.dto.EbookMetadata;
 import com.webrary.dto.TocEntry;
 import lombok.extern.slf4j.Slf4j;
 import nl.siegmann.epublib.domain.Book;
+import nl.siegmann.epublib.domain.Resource;
 import nl.siegmann.epublib.domain.TOCReference;
 import nl.siegmann.epublib.epub.EpubReader;
 import org.apache.pdfbox.Loader;
@@ -23,7 +24,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -81,6 +84,11 @@ public class EbookParserService {
             collectEpubToc(epubBook.getTableOfContents().getTocReferences(), toc);
         }
 
+        // Supplement with chapter details from XHTML TOC pages if NCX only has shallow entries
+        if (toc.size() < 10) {
+            supplementEpubTocFromXhtml(epubBook, toc);
+        }
+
         return EbookMetadata.builder()
                 .title(title)
                 .author(author)
@@ -91,16 +99,98 @@ public class EbookParserService {
     }
 
     private void collectEpubToc(List<TOCReference> references, List<TocEntry> toc) {
+        collectEpubToc(references, toc, 0);
+    }
+
+    private void collectEpubToc(List<TOCReference> references, List<TocEntry> toc, int level) {
         for (TOCReference ref : references) {
             TocEntry entry = TocEntry.builder()
                     .title(ref.getTitle())
                     .chapterIndex(toc.size())
                     .href(ref.getResource() != null ? ref.getResource().getHref() : null)
+                    .level(level)
                     .build();
             toc.add(entry);
 
             if (ref.getChildren() != null && !ref.getChildren().isEmpty()) {
-                collectEpubToc(ref.getChildren(), toc);
+                collectEpubToc(ref.getChildren(), toc, level + 1);
+            }
+        }
+    }
+
+    /**
+     * Supplement TOC by parsing XHTML TOC pages (e.g., part0003.xhtml with id "x_x1TOC.xhtml")
+     * that contain detailed chapter listings. Many EPUBs store the real chapter TOC in XHTML
+     * files while the NCX only has top-level entries.
+     */
+    private void supplementEpubTocFromXhtml(Book epubBook, List<TocEntry> toc) {
+        Set<String> existingTitles = new HashSet<>();
+        for (TocEntry e : toc) existingTitles.add(e.getTitle());
+
+        for (Resource resource : epubBook.getResources().getAll()) {
+            String href = resource.getHref();
+            String id = resource.getId();
+            if (href == null) continue;
+
+            String hrefLower = href.toLowerCase();
+            if (!hrefLower.endsWith(".xhtml") && !hrefLower.endsWith(".html")) continue;
+
+            boolean isTocPage = (id != null && id.contains(".") && id.toUpperCase().contains("TOC"))
+                    || hrefLower.contains("toc")
+                    || hrefLower.equals("nav.xhtml");
+            if (!isTocPage) continue;
+
+            byte[] data;
+            try {
+                data = resource.getData();
+            } catch (IOException e) {
+                continue;
+            }
+            if (data == null || data.length == 0) continue;
+
+            String content = new String(data, StandardCharsets.UTF_8);
+            if (!content.contains("<a ")) continue;
+
+            // Extract section title from <h1>
+            String sectionTitle = null;
+            Matcher h1m = Pattern.compile("<h1[^>]*>([^<]+)</h1>").matcher(content);
+            if (h1m.find()) {
+                sectionTitle = h1m.group(1).trim();
+                if (sectionTitle.isEmpty()) sectionTitle = null;
+            }
+
+            // Extract <a href="..." title</a> chapter links
+            Matcher lm = Pattern.compile("<a\\s+href=\"([^\"]+)\"[^>]*>([^<]+)</a>").matcher(content);
+            List<String[]> links = new ArrayList<>();
+            while (lm.find()) {
+                String lh = lm.group(1);
+                String lt = lm.group(2).trim();
+                if (lt.isEmpty() || lh.isEmpty() || lh.startsWith("#")) continue;
+                links.add(new String[]{lh, lt});
+            }
+            if (links.size() < 2) continue;
+
+            String baseDir = href.contains("/") ? href.substring(0, href.lastIndexOf('/') + 1) : "";
+
+            if (sectionTitle != null && !existingTitles.contains(sectionTitle)) {
+                toc.add(TocEntry.builder()
+                        .title(sectionTitle)
+                        .chapterIndex(toc.size())
+                        .href(href)
+                        .level(0)
+                        .build());
+                existingTitles.add(sectionTitle);
+            }
+
+            for (String[] link : links) {
+                if (existingTitles.contains(link[1])) continue;
+                toc.add(TocEntry.builder()
+                        .title(link[1])
+                        .chapterIndex(toc.size())
+                        .href(baseDir + link[0])
+                        .level(1)
+                        .build());
+                existingTitles.add(link[1]);
             }
         }
     }
@@ -132,7 +222,7 @@ public class EbookParserService {
             List<TocEntry> toc = new ArrayList<>();
             PDDocumentOutline outline = doc.getDocumentCatalog().getDocumentOutline();
             if (outline != null) {
-                collectPdfOutline(outline, toc, doc);
+                collectPdfOutline(outline, toc, doc, 0);
             }
 
             return EbookMetadata.builder()
@@ -146,7 +236,7 @@ public class EbookParserService {
         }
     }
 
-    private void collectPdfOutline(PDOutlineNode node, List<TocEntry> toc, PDDocument doc) {
+    private void collectPdfOutline(PDOutlineNode node, List<TocEntry> toc, PDDocument doc, int level) {
         for (PDOutlineItem item : node.children()) {
             Integer startPage = null;
             try {
@@ -162,10 +252,11 @@ public class EbookParserService {
                     .title(item.getTitle())
                     .chapterIndex(toc.size())
                     .startPage(startPage)
+                    .level(level)
                     .build();
             toc.add(entry);
 
-            collectPdfOutline(item, toc, doc);
+            collectPdfOutline(item, toc, doc, level + 1);
         }
     }
 

@@ -22,6 +22,9 @@ public class Bookshelf {
     @Column(name = "sort_order")
     private int sortOrder;
 
+    @Transient
+    private int bookCount;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
