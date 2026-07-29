@@ -2092,13 +2092,11 @@
   }
 
   function handleDetailLocalRead() {
-    const currentBook = state.currentDetailBook;
+    const currentBook = state.detailBook;
     if (!currentBook) return;
-    // Check if book has local file — use bookId from detail data
     const entityId = currentBook.bookId || currentBook.id;
-    // Try to find matching card in books grid for file status
-    const card = document.querySelector(`.book-card[data-book-bookid="${entityId}"]`);
-    if (card && card.dataset.hasFile === 'true') {
+    // Check if book has local file — use bookId from detail data
+    if (currentBook.filePath && currentBook.filePath.length > 0) {
       const title = encodeURIComponent(currentBook.title || '');
       const author = encodeURIComponent(currentBook.author || '');
       const ext = encodeURIComponent(currentBook.extension || '');
