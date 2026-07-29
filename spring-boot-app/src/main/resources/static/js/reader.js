@@ -32,7 +32,7 @@
   var pdfPageNum = 1;
   var pdfTotalPages = 0;
   var pdfCurrentStartPage = 1;
-  var readerSettings = { readingMode: 'single', pageFit: 'width' };
+  var readerSettings = { readingMode: 'single', pageFit: 'width', preloadCount: 3 };
 
   /* ================================================================
      DOM References
@@ -64,6 +64,7 @@
     settingsClose: $('#settingsClose'),
     readingModeGroup: $('#readingModeGroup'),
     pageFitGroup: $('#pageFitGroup'),
+    preloadInput: $('#preloadInput'),
   };
 
   /* ================================================================
@@ -176,6 +177,7 @@
         var parsed = JSON.parse(raw);
         if (parsed.readingMode) readerSettings.readingMode = parsed.readingMode;
         if (parsed.pageFit) readerSettings.pageFit = parsed.pageFit;
+        if (parsed.preloadCount != null) readerSettings.preloadCount = parsed.preloadCount;
       }
     } catch (e) { /* ignore */ }
   }
@@ -214,6 +216,7 @@
     fitBtns.forEach(function (btn) {
       btn.classList.toggle('selected', btn.dataset.value === readerSettings.pageFit);
     });
+    dom.preloadInput.value = readerSettings.preloadCount;
   }
 
   function setReadingMode(mode) {
@@ -656,7 +659,47 @@
       saveProgress({ page: startPage, totalPages: pdfTotalPages });
       updatePdfNavState();
       container.scrollTop = 0;
+      preloadAdjacentPages(startPage, step);
     });
+  }
+
+  function preloadAdjacentPages(startPage, step) {
+    var n = readerSettings.preloadCount;
+    if (n <= 0) return;
+
+    var container = document.getElementById('pdfContainer');
+    if (!container) return;
+
+    // Remove old preload buffer
+    var old = container.querySelector('.pdf-preload-buffer');
+    if (old) old.remove();
+
+    var buffer = document.createElement('div');
+    buffer.className = 'pdf-preload-buffer';
+    buffer.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;';
+
+    // Preload N pages ahead
+    for (var i = 1; i <= n; i++) {
+      var pageAhead = startPage + step + i - 1;
+      if (pageAhead > pdfTotalPages) break;
+      (function (p) {
+        var img = document.createElement('img');
+        img.src = '/api/books/' + PARAM_BOOK_ID + '/pdf/page/' + p + '?dpi=144';
+        buffer.appendChild(img);
+      })(pageAhead);
+    }
+    // Preload N pages behind
+    for (var j = 1; j <= n; j++) {
+      var pageBehind = startPage - j;
+      if (pageBehind < 1) break;
+      (function (p) {
+        var img = document.createElement('img');
+        img.src = '/api/books/' + PARAM_BOOK_ID + '/pdf/page/' + p + '?dpi=144';
+        buffer.appendChild(img);
+      })(pageBehind);
+    }
+
+    container.appendChild(buffer);
   }
 
   function updatePdfNavState() {
@@ -835,6 +878,17 @@
       var btn = e.target.closest('.option-btn');
       if (!btn) return;
       setPageFit(btn.dataset.value);
+    });
+
+    dom.preloadInput.addEventListener('change', function () {
+      var val = parseInt(dom.preloadInput.value, 10);
+      if (isNaN(val)) val = 0;
+      val = Math.max(0, Math.min(10, val));
+      dom.preloadInput.value = val;
+      if (readerSettings.preloadCount === val) return;
+      readerSettings.preloadCount = val;
+      saveSettings();
+      if (currentFormat === 'pdf') renderPdfViewport(pdfCurrentStartPage);
     });
 
     // TOC item clicks

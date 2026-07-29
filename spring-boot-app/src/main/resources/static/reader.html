@@ -614,6 +614,41 @@
       line-height: 1;
     }
 
+    .preload-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .preload-input {
+      width: 64px;
+      height: 36px;
+      padding: 0 10px;
+      border-radius: 4px;
+      border: 1px solid #48506a;
+      background: #252836;
+      color: #ffffff;
+      font-size: 14px;
+      font-family: inherit;
+      text-align: center;
+      outline: none;
+      transition: border-color var(--transition);
+      -moz-appearance: textfield;
+    }
+    .preload-input::-webkit-inner-spin-button,
+    .preload-input::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .preload-input:focus {
+      border-color: #667cff;
+    }
+
+    .preload-hint {
+      font-size: 12px;
+      color: #7d849b;
+    }
+
     @media (max-width: 860px) {
       .settings-modal {
         width: 100%;
@@ -751,6 +786,15 @@
             <button class="option-btn" data-value="height">
               <span class="option-icon">↕</span> 适配高度
             </button>
+          </div>
+        </div>
+
+        <!-- Preload -->
+        <div class="settings-section">
+          <div class="settings-section-title">预加载（PDF有效）</div>
+          <div class="preload-row">
+            <input type="number" class="preload-input" id="preloadInput" min="0" max="10" value="3">
+            <span class="preload-hint">0~10 页，提前缓存以提升翻页流畅度</span>
           </div>
         </div>
       </div>
