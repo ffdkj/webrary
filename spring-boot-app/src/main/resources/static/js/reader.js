@@ -31,6 +31,8 @@
   var tocData = [];
   var pdfPageNum = 1;
   var pdfTotalPages = 0;
+  var pdfCurrentStartPage = 1;
+  var readerSettings = { readingMode: 'single', pageFit: 'width' };
 
   /* ================================================================
      DOM References
@@ -56,6 +58,12 @@
     pagePrevBtn: $('#pagePrevBtn'),
     pageNextBtn: $('#pageNextBtn'),
     pageDivider: $('#pageDivider'),
+    settingsBtn: $('#settingsBtn'),
+    settingsOverlay: $('#settingsOverlay'),
+    settingsModal: $('#settingsModal'),
+    settingsClose: $('#settingsClose'),
+    readingModeGroup: $('#readingModeGroup'),
+    pageFitGroup: $('#pageFitGroup'),
   };
 
   /* ================================================================
@@ -128,6 +136,93 @@
     } catch (e) {
       return null;
     }
+  }
+
+  /* ================================================================
+      Reader Settings
+      ================================================================ */
+  function loadSettings() {
+    try {
+      var raw = localStorage.getItem('reader-settings');
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed.readingMode) readerSettings.readingMode = parsed.readingMode;
+        if (parsed.pageFit) readerSettings.pageFit = parsed.pageFit;
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function saveSettings() {
+    try {
+      localStorage.setItem('reader-settings', JSON.stringify(readerSettings));
+    } catch (e) { /* ignore */ }
+  }
+
+  function openSettings() {
+    dom.settingsOverlay.classList.add('open');
+    dom.settingsModal.style.display = '';
+    applySettingsToUI();
+  }
+
+  function closeSettings() {
+    dom.settingsOverlay.classList.remove('open');
+    dom.settingsModal.style.display = 'none';
+  }
+
+  function toggleSettings() {
+    if (dom.settingsOverlay.classList.contains('open')) {
+      closeSettings();
+    } else {
+      openSettings();
+    }
+  }
+
+  function applySettingsToUI() {
+    var modeBtns = dom.readingModeGroup.querySelectorAll('.option-btn');
+    modeBtns.forEach(function (btn) {
+      btn.classList.toggle('selected', btn.dataset.value === readerSettings.readingMode);
+    });
+    var fitBtns = dom.pageFitGroup.querySelectorAll('.option-btn');
+    fitBtns.forEach(function (btn) {
+      btn.classList.toggle('selected', btn.dataset.value === readerSettings.pageFit);
+    });
+  }
+
+  function setReadingMode(mode) {
+    if (readerSettings.readingMode === mode) return;
+    readerSettings.readingMode = mode;
+    saveSettings();
+    applySettingsToUI();
+    if (currentFormat === 'pdf') {
+      pdfCurrentStartPage = makePageValid(pdfCurrentStartPage);
+      renderPdfViewport(pdfCurrentStartPage);
+    }
+  }
+
+  function setPageFit(fit) {
+    if (readerSettings.pageFit === fit) return;
+    readerSettings.pageFit = fit;
+    saveSettings();
+    applySettingsToUI();
+    if (currentFormat === 'pdf') {
+      renderPdfViewport(pdfCurrentStartPage);
+    }
+  }
+
+  function getStepSize() {
+    return readerSettings.readingMode === 'double' ? 2 : 1;
+  }
+
+  function makePageValid(page) {
+    var step = getStepSize();
+    // Align to step boundary (1, 3, 5... for double, 1, 2, 3... for single)
+    if (step === 2) {
+      page = page % 2 === 0 ? page - 1 : page;
+    }
+    if (page < 1) page = 1;
+    if (page > pdfTotalPages) page = Math.max(1, pdfTotalPages - step + 1);
+    if (step === 2 && page % 2 === 0) page = page - 1;
+    return page;
   }
 
   /* ================================================================
@@ -421,8 +516,9 @@
       })
       .then(function () {
         var saved = loadProgress();
-        if (saved && saved.page) pdfPageNum = Math.min(saved.page, pdfTotalPages);
-        return renderPdfPage(pdfPageNum);
+        if (saved && saved.page) pdfCurrentStartPage = Math.min(saved.page, pdfTotalPages);
+        pdfCurrentStartPage = makePageValid(pdfCurrentStartPage);
+        return renderPdfViewport(pdfCurrentStartPage);
       })
       .then(function () {
         updatePdfNavState();
@@ -437,43 +533,122 @@
       });
   }
 
-  function renderPdfPage(pageNum) {
+  function renderPdfViewport(startPage) {
     var container = document.getElementById('pdfContainer');
     if (!container) return Promise.resolve();
 
+    startPage = makePageValid(startPage);
+    pdfCurrentStartPage = startPage;
+    pdfPageNum = startPage;
+
     container.innerHTML = '';
 
-    return new Promise(function (resolve) {
-      var img = document.createElement('img');
-      img.className = 'pdf-page';
-      img.id = 'page-' + pageNum;
-      img.src = '/api/books/' + PARAM_BOOK_ID + '/pdf/page/' + pageNum + '?dpi=144';
-      img.style.cssText = 'display:block;margin:0 auto;max-width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.6);border-radius:2px;';
-      img.onload = function () {
-        pdfPageNum = pageNum;
-        img.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        saveProgress({ page: pageNum, totalPages: pdfTotalPages });
-        updatePdfNavState();
-        resolve();
-      };
-      img.onerror = function () {
-        resolve();
-      };
-      container.appendChild(img);
+    var step = getStepSize();
+    var isDouble = step === 2;
+    var isFitHeight = readerSettings.pageFit === 'height';
+    var pagesToRender = isDouble
+      ? (startPage + 1 <= pdfTotalPages ? [startPage, startPage + 1] : [startPage])
+      : [startPage];
+
+    var wrapper = document.createElement('div');
+    wrapper.className = 'pdf-page-wrapper';
+    if (isDouble) {
+      wrapper.style.display = 'flex';
+      wrapper.style.justifyContent = 'center';
+      wrapper.style.alignItems = 'flex-start';
+      wrapper.style.gap = '0';
+    }
+    container.appendChild(wrapper);
+
+    // For fit-height mode, adjust container
+    if (isFitHeight) {
+      container.style.overflowY = 'hidden';
+      container.style.alignItems = 'center';
+      container.style.justifyContent = 'center';
+      container.style.padding = '0';
+      container.style.height = '100%';
+      wrapper.style.height = '100%';
+      wrapper.style.alignItems = 'center';
+      wrapper.style.justifyContent = 'center';
+    } else {
+      container.style.overflowY = 'auto';
+      container.style.alignItems = 'center';
+      container.style.justifyContent = 'flex-start';
+      container.style.padding = '24px 0';
+      container.style.height = '';
+      wrapper.style.height = '';
+      wrapper.style.alignItems = 'flex-start';
+    }
+
+    var promises = pagesToRender.map(function (pageNum) {
+      return new Promise(function (resolve) {
+        var img = document.createElement('img');
+        img.className = 'pdf-page';
+        img.id = 'page-' + pageNum;
+        img.src = '/api/books/' + PARAM_BOOK_ID + '/pdf/page/' + pageNum + '?dpi=144';
+        img.style.display = 'block';
+
+        if (isFitHeight) {
+          // Fit: scale to container height
+          if (isDouble) {
+            img.style.maxHeight = '100%';
+            img.style.maxWidth = '50%';
+            img.style.width = 'auto';
+            img.style.height = 'auto';
+            img.style.objectFit = 'contain';
+          } else {
+            img.style.maxHeight = '100%';
+            img.style.maxWidth = '100%';
+            img.style.width = 'auto';
+            img.style.height = 'auto';
+            img.style.objectFit = 'contain';
+          }
+        } else {
+          // Fit width
+          if (isDouble) {
+            img.style.maxWidth = '100%';
+            img.style.width = '50%';
+            img.style.height = 'auto';
+          } else {
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+          }
+        }
+
+        img.style.boxShadow = '0 4px 24px rgba(0,0,0,0.6)';
+        img.style.borderRadius = '2px';
+
+        img.onload = function () { resolve(); };
+        img.onerror = function () { resolve(); };
+        wrapper.appendChild(img);
+      });
+    });
+
+    return Promise.all(promises).then(function () {
+      saveProgress({ page: startPage, totalPages: pdfTotalPages });
+      updatePdfNavState();
+      container.scrollTop = 0;
     });
   }
 
   function updatePdfNavState() {
-    dom.pagePrevBtn.disabled = pdfPageNum <= 1;
-    dom.pageNextBtn.disabled = pdfPageNum >= pdfTotalPages;
+    var step = getStepSize();
+    dom.pagePrevBtn.disabled = pdfCurrentStartPage <= 1;
+    dom.pageNextBtn.disabled = pdfCurrentStartPage + step > pdfTotalPages;
   }
 
   function pdfPrevPage() {
-    if (pdfPageNum > 1) renderPdfPage(pdfPageNum - 1);
+    var step = getStepSize();
+    if (pdfCurrentStartPage > 1) {
+      renderPdfViewport(Math.max(1, pdfCurrentStartPage - step));
+    }
   }
 
   function pdfNextPage() {
-    if (pdfPageNum < pdfTotalPages) renderPdfPage(pdfPageNum + 1);
+    var step = getStepSize();
+    if (pdfCurrentStartPage + step <= pdfTotalPages) {
+      renderPdfViewport(pdfCurrentStartPage + step);
+    }
   }
 
   /* ================================================================
@@ -617,6 +792,23 @@
     dom.tocOverlay.addEventListener('click', closeToc);
     dom.tocClose.addEventListener('click', closeToc);
 
+    // Settings
+    dom.settingsBtn.addEventListener('click', toggleSettings);
+    dom.settingsOverlay.addEventListener('click', closeSettings);
+    dom.settingsClose.addEventListener('click', closeSettings);
+
+    dom.readingModeGroup.addEventListener('click', function (e) {
+      var btn = e.target.closest('.option-btn');
+      if (!btn) return;
+      setReadingMode(btn.dataset.value);
+    });
+
+    dom.pageFitGroup.addEventListener('click', function (e) {
+      var btn = e.target.closest('.option-btn');
+      if (!btn) return;
+      setPageFit(btn.dataset.value);
+    });
+
     // TOC item clicks
     dom.tocList.addEventListener('click', function (e) {
       var item = e.target.closest('.toc-item');
@@ -630,10 +822,10 @@
       } else if (currentFormat === 'pdf') {
         var idx = item ? parseInt(item.dataset.index) : -1;
         if (idx >= 0 && tocData[idx] && tocData[idx].page) {
-          renderPdfPage(tocData[idx].page);
+          renderPdfViewport(tocData[idx].page);
         } else if (href) {
           var page = href.replace('#page-', '');
-          if (page) renderPdfPage(parseInt(page, 10));
+          if (page) renderPdfViewport(parseInt(page, 10));
         }
       } else if (currentFormat === 'txt' && href) {
         var target = document.getElementById(href.replace('#', ''));
@@ -726,6 +918,8 @@
         case 'Escape':
           if (dom.tocSidebar.classList.contains('open')) {
             closeToc();
+          } else if (dom.settingsOverlay.classList.contains('open')) {
+            closeSettings();
           }
           break;
       }
@@ -740,8 +934,9 @@
   }
 
   /* ================================================================
-     Start
-     ================================================================ */
+      Start
+      ================================================================ */
+  loadSettings();
   applyFontSize();
   bindEvents();
   init();

@@ -14,4 +14,5 @@ public class TocEntry {
     private int chapterIndex;
     private Integer startPage;
     private String href;
+    private int level;
 }

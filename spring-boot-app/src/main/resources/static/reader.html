@@ -457,6 +457,172 @@
       .toc-sidebar { width: 100%; }
       .pdf-container { padding: 8px 0; gap: 8px; }
     }
+
+    /* ==========================================================
+       Settings Modal
+       ========================================================== */
+    .settings-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: 299;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--transition-slow);
+    }
+    .settings-overlay.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .settings-modal {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 300;
+      width: 820px;
+      height: 700px;
+      max-width: 95vw;
+      max-height: 80vh;
+      background: #303340;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      font-family: "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    }
+
+    .settings-tabs {
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+
+    .settings-tab {
+      padding: 14px 0;
+      font-size: 14px;
+      font-weight: 500;
+      color: #b0b4c5;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      transition: all var(--transition);
+      margin-right: 32px;
+    }
+    .settings-tab.active {
+      color: #6d8cff;
+      border-bottom-color: #6d8cff;
+    }
+    .settings-tab:hover:not(.active) {
+      color: #d0d4e0;
+    }
+
+    .settings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px 0;
+      flex-shrink: 0;
+    }
+
+    .settings-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .settings-close {
+      width: 32px;
+      height: 32px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #b0b4c5;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .settings-close:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .settings-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px 32px;
+    }
+
+    .settings-content::-webkit-scrollbar { width: 4px; }
+    .settings-content::-webkit-scrollbar-track { background: transparent; }
+    .settings-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+    .settings-section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #b8bdd0;
+      margin-bottom: 12px;
+    }
+
+    .settings-section {
+      margin-bottom: 28px;
+    }
+
+    .option-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .option-btn {
+      height: 36px;
+      padding: 0 18px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #b8bdd0;
+      background: transparent;
+      border: 1px solid #48506a;
+      cursor: pointer;
+      transition: all var(--transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .option-btn:hover {
+      border-color: #667cff;
+      color: #d0d4e0;
+    }
+    .option-btn.selected {
+      background: #667cff;
+      border-color: #667cff;
+      color: #ffffff;
+    }
+
+    .option-btn .option-icon {
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    @media (max-width: 860px) {
+      .settings-modal {
+        width: 100%;
+        height: 100%;
+        max-width: 100vw;
+        max-height: 100vh;
+        border-radius: 0;
+      }
+    }
   </style>
 </head>
 <body>
@@ -480,6 +646,13 @@
         <button class="toolbar-btn" id="tocBtn" title="目录" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+        </button>
+        <span class="toolbar-divider"></span>
+
+        <button class="toolbar-btn" id="settingsBtn" title="阅读设置">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"></path>
           </svg>
         </button>
         <span class="toolbar-divider"></span>
@@ -545,6 +718,43 @@
         <span class="loading-text" style="display:block;padding:20px;">暂无目录</span>
       </div>
     </aside>
+
+    <!-- ===== Settings Modal ===== -->
+    <div class="settings-overlay" id="settingsOverlay"></div>
+    <div class="settings-modal" id="settingsModal" style="display:none;">
+      <div class="settings-tabs">
+        <button class="settings-tab active">阅读模式</button>
+        <div style="flex:1;"></div>
+        <button class="settings-close" id="settingsClose" title="关闭">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="settings-content">
+        <!-- Reading Mode (PDF only) -->
+        <div class="settings-section">
+          <div class="settings-section-title">阅读模式（PDF有效）</div>
+          <div class="option-group" id="readingModeGroup">
+            <button class="option-btn selected" data-value="single">单页</button>
+            <button class="option-btn" data-value="double">双页</button>
+          </div>
+        </div>
+
+        <!-- Page Fit -->
+        <div class="settings-section">
+          <div class="settings-section-title">页面适配</div>
+          <div class="option-group" id="pageFitGroup">
+            <button class="option-btn selected" data-value="width">
+              <span class="option-icon">↔</span> 适配宽度
+            </button>
+            <button class="option-btn" data-value="height">
+              <span class="option-icon">↕</span> 适配高度
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ===== Vendor scripts (order matters: JSZip before epub.js) ===== -->
