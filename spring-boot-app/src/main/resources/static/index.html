@@ -11,9 +11,11 @@
 </head>
 <body>
 
-  <!-- ============ Auth Page ============ -->
+  <!-- ============ 认证页面（登录/注册） ============ -->
+  <!-- 用户首次访问或未登录时显示的页面 -->
   <div class="auth-page" id="authPage" style="display:flex;">
     <div class="auth-card">
+      <!-- Logo -->
       <div class="auth-logo">
         <svg viewBox="0 0 32 32" fill="none" width="40" height="40">
           <rect width="32" height="32" rx="8" fill="#5865f2"/>
@@ -22,10 +24,12 @@
         </svg>
         <span>BookReader</span>
       </div>
+      <!-- 登录/注册标签切换按钮 -->
       <div class="auth-tabs">
         <button class="auth-tab active" data-auth-tab="login" onclick="window._switchAuthTab?.(this)">登录</button>
         <button class="auth-tab" data-auth-tab="register" onclick="window._switchAuthTab?.(this)">注册</button>
       </div>
+      <!-- 登录表单 -->
       <form id="authLoginForm" onsubmit="event.preventDefault(); window._handleAuthSubmit?.('login')">
         <div class="form-group">
           <label for="authLoginEmail">邮箱</label>
@@ -38,6 +42,7 @@
         <p class="login-error" id="authError" style="display:none;"></p>
         <button type="submit" class="btn btn-primary btn-block">登录</button>
       </form>
+      <!-- 注册表单 -->
       <form id="authRegisterForm" onsubmit="event.preventDefault(); window._handleAuthSubmit?.('register')" style="display:none;">
         <div class="form-group">
           <label for="authRegEmail">邮箱</label>
@@ -53,12 +58,13 @@
     </div>
   </div>
 
-  <!-- ============ App Container ============ -->
+  <!-- ============ 主应用容器（登录后可见） ============ -->
   <div class="app" id="authApp" style="display:none;">
 
-    <!-- Sidebar -->
+    <!-- 侧边栏导航 -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-inner">
+        <!-- Logo 区域 -->
         <div class="logo">
           <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
             <rect width="32" height="32" rx="8" fill="#5865f2"/>
@@ -68,6 +74,7 @@
           <span class="logo-text">Webrary</span>
         </div>
 
+        <!-- 侧边栏导航菜单：书架、历史、浏览、下载、设置、关于 -->
         <nav class="sidebar-nav" id="sidebarNav">
           <a class="nav-item active" data-page="shelf">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -110,15 +117,18 @@
         </nav>
       </div>
 
+      <!-- 侧边栏底部：用户信息与登录按钮 -->
       <div class="sidebar-footer">
         <div class="sidebar-user" id="sidebarUser">
           <span class="sidebar-user-email" id="userEmail"></span>
+          <!-- 退出登录按钮 -->
           <button class="sidebar-user-logout" id="appLogoutBtn" title="退出登录" style="display:none;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
             </svg>
           </button>
         </div>
+        <!-- 绑定 Z-Library 按钮 -->
         <button class="login-btn" id="loginBtn" title="绑定 Z-Library">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>
@@ -127,7 +137,7 @@
         </button>
       </div>
 
-      <!-- Mobile sidebar toggle -->
+      <!-- 移动端侧边栏切换按钮 -->
       <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
           <path d="M3 12h18M3 6h18M3 18h18"/>
@@ -135,12 +145,13 @@
       </button>
     </aside>
 
-    <!-- Main Content -->
+    <!-- 主内容区域 -->
     <main class="main" id="mainContent">
 
-      <!-- Header -->
+      <!-- 顶部标题栏 -->
       <header class="header" id="header">
         <div class="header-left">
+          <!-- 返回按钮 -->
           <button class="header-back-btn" id="headerBackBtn" style="display:none;" title="返回">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
               <polyline points="15,18 9,12 15,6"/>
@@ -150,11 +161,13 @@
           <span class="header-badge" id="totalBookCount">0</span>
         </div>
         <div class="header-actions">
+          <!-- 搜索按钮 -->
           <button class="icon-btn" id="searchBtn" title="搜索">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
               <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
             </svg>
           </button>
+          <!-- 上传书籍按钮 -->
           <button class="icon-btn" id="uploadBtn" title="上传书籍">
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"></path>
@@ -162,6 +175,7 @@
               <line x1="12" y1="12" x2="12" y2="22"></line>
             </svg>
           </button>
+          <!-- 刷新按钮 -->
           <button class="icon-btn" id="refreshBtn" title="刷新">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
               <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>
@@ -170,11 +184,12 @@
         </div>
       </header>
 
-      <!-- Tab Bar -->
+      <!-- 书架标签栏（Tab栏） -->
       <section class="tab-bar-wrapper">
         <div class="tab-bar" id="tabBar">
-          <!-- Dynamically populated -->
+          <!-- 动态生成 -->
         </div>
+        <!-- 新建书架按钮 -->
         <button class="tab-add-btn" id="addShelfBtn" title="新建书架">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
             <path d="M12 5v14M5 12h14"/>
@@ -182,30 +197,30 @@
         </button>
       </section>
 
-       <!-- Book Grid -->
+       <!-- 书籍网格区域 -->
        <section class="books-container" id="booksContainer">
          <div class="books-grid" id="booksGrid">
-          <!-- Dynamically populated -->
+          <!-- 动态生成 -->
         </div>
 
-        <!-- Empty State -->
+        <!-- 空状态：没有书籍时显示 -->
         <div class="empty-state" id="emptyState" style="display:none;">
           <div class="empty-state-kaomoji">(´・ω・｀)</div>
           <p>还没有书籍</p>
           <p class="text-muted">点击上方 + 搜索添加，或直接上传</p>
         </div>
 
-        <!-- Loading State -->
+        <!-- 加载状态 -->
         <div class="loading-state" id="loadingState">
           <div class="spinner"></div>
           <p>加载中...</p>
         </div>
       </section>
 
-      <!-- ============ Detail Page ============ -->
+      <!-- ============ 书籍详情页 ============ -->
       <section class="detail-page" id="detailPage" style="display:none;">
         <div class="detail-content" id="detailContent">
-          <!-- Left Panel -->
+          <!-- 左侧面板：封面、元数据、操作按钮 -->
           <div class="detail-left">
             <div class="detail-cover-wrapper">
               <img class="detail-cover" id="detailCover" src="" alt="">
@@ -218,28 +233,35 @@
             </div>
             <div class="detail-desc" id="detailDesc">
               <p class="detail-desc-text" id="detailDescText"></p>
+              <!-- 展开更多按钮 -->
               <button class="detail-desc-more" id="detailDescMore" style="display:none;">查看更多</button>
             </div>
+            <!-- 标签列表 -->
             <div class="detail-tags" id="detailTags"></div>
+            <!-- 操作按钮组 -->
             <div class="detail-actions">
+              <!-- 收藏按钮 -->
               <button class="detail-btn" id="detailFavBtn" title="收藏">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18">
                   <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
                 </svg>
                 <span>收藏</span>
               </button>
+              <!-- 本地阅读按钮 -->
               <button class="detail-btn" id="detailLocalRead" title="本地阅读">
                 <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
                   <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
                 </svg>
                 <span>本地阅读</span>
               </button>
+              <!-- 在线阅读按钮（主要操作） -->
               <button class="detail-btn detail-btn-primary" id="detailReadOnline">
                 <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
                   <polygon points="5,3 19,12 5,21"/>
                 </svg>
                 <span>在线阅读</span>
               </button>
+              <!-- 下载到书架按钮 -->
               <button class="detail-btn" id="detailDownloadToShelf">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="18" height="18">
                   <path d="M12 3v12m0 0l-5-5m5 5l5-5"/><path d="M4 17v1a3 3 0 003 3h10a3 3 0 003-3v-1"/>
@@ -249,17 +271,19 @@
             </div>
           </div>
 
-          <!-- Right Panel: TOC -->
+          <!-- 右侧面板：目录列表 -->
           <div class="detail-right">
             <div class="toc-header">
               <span class="toc-title">目录 <span class="toc-count" id="tocCount">0</span>节</span>
               <div class="toc-header-actions">
+                <!-- 目录搜索框 -->
                 <div class="toc-search-wrapper">
                   <svg class="toc-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
                     <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
                   </svg>
                   <input type="text" class="toc-search" id="tocSearch" placeholder="搜索目录...">
                 </div>
+                <!-- 目录排序按钮 -->
                 <button class="toc-sort-btn" id="tocSortBtn" title="排序">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
                     <path d="M3 7h7M3 12h10M3 17h14"/>
@@ -267,13 +291,14 @@
                 </button>
               </div>
             </div>
+            <!-- 目录列表 -->
             <div class="toc-list" id="tocList">
-              <!-- Dynamically populated -->
+              <!-- 动态生成 -->
             </div>
           </div>
         </div>
 
-        <!-- Continue Reading FAB -->
+        <!-- 继续阅读浮动按钮 (FAB) -->
         <button class="continue-reading-btn" id="continueReadingBtn" style="display:none;">
           <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
             <polygon points="5,3 19,12 5,21"/>
@@ -284,18 +309,19 @@
     </main>
   </div>
 
-  <!-- ============ Custom Context Menu ============ -->
+  <!-- ============ 自定义右键菜单 ============ -->
   <div class="context-menu" id="contextMenu" style="display:none;">
     <div class="context-menu-inner" id="contextMenuInner">
-      <!-- Dynamically populated -->
+      <!-- 动态生成 -->
     </div>
   </div>
 
-  <!-- ============ Search Modal ============ -->
+  <!-- ============ 搜索弹窗 ============ -->
   <div class="modal-overlay" id="searchModal" style="display:none;">
     <div class="modal search-modal">
       <div class="modal-header">
         <h2>搜索书籍</h2>
+        <!-- 关闭按钮 -->
         <button class="modal-close" id="searchModalClose">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
             <path d="M18 6L6 18M6 6l12 12"/>
@@ -303,11 +329,13 @@
         </button>
       </div>
       <div class="modal-body">
+        <!-- 搜索输入框 -->
         <div class="search-input-group">
           <input type="text" class="search-input" id="searchQuery" placeholder="输入书名或作者..." autocomplete="off">
           <button class="btn btn-primary" id="searchSubmitBtn">搜索</button>
         </div>
 
+        <!-- 高级筛选区域 -->
         <div class="search-filters" id="searchFilters">
           <details class="filter-group">
             <summary>高级筛选</summary>
@@ -353,10 +381,12 @@
           </details>
         </div>
 
+        <!-- 搜索结果列表 -->
         <div class="search-results" id="searchResults">
           <div class="search-empty">输入关键词开始搜索</div>
         </div>
 
+        <!-- 搜索加载状态 -->
         <div class="search-loading" id="searchLoading" style="display:none;">
           <div class="spinner"></div>
           <p>搜索中...</p>
@@ -365,11 +395,12 @@
     </div>
   </div>
 
-  <!-- ============ Upload Modal ============ -->
+  <!-- ============ 上传书籍弹窗 ============ -->
   <div class="modal-overlay" id="uploadModal" style="display:none;">
     <div class="modal upload-modal">
       <div class="modal-header">
         <h2>上传书籍</h2>
+        <!-- 关闭按钮 -->
         <button class="modal-close" id="uploadModalClose">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
             <path d="M18 6L6 18M6 6l12 12"/>
@@ -377,6 +408,7 @@
         </button>
       </div>
       <div class="modal-body">
+        <!-- 拖拽上传区域 -->
         <div class="upload-dropzone" id="uploadDropzone">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="48" height="48" opacity="0.4">
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
@@ -401,10 +433,11 @@
         <div class="form-group">
           <label for="uploadShelf">目标书架</label>
           <select id="uploadShelf" class="form-input">
-            <!-- Dynamically populated -->
+            <!-- 动态生成 -->
           </select>
         </div>
 
+        <!-- 上传提交按钮 -->
         <button class="btn btn-primary btn-block" id="uploadSubmitBtn">
           <span id="uploadSubmitText">上传到书架</span>
           <div class="spinner spinner-sm" id="uploadSpinner" style="display:none;"></div>
@@ -413,11 +446,12 @@
     </div>
   </div>
 
-  <!-- ============ Login Modal ============ -->
+  <!-- ============ 登录 Z-Library 弹窗 ============ -->
   <div class="modal-overlay" id="loginModal" style="display:none;">
     <div class="modal login-modal">
       <div class="modal-header">
         <h2>登录 Z-Library</h2>
+        <!-- 关闭按钮 -->
         <button class="modal-close" id="loginModalClose">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
             <path d="M18 6L6 18M6 6l12 12"/>
@@ -437,6 +471,7 @@
           <label for="loginDomain">域名 (可选)</label>
           <input type="text" id="loginDomain" class="form-input" placeholder="如 singlelogin.re">
         </div>
+        <!-- 代理设置 -->
         <div class="form-group">
           <details class="proxy-details">
             <summary>代理设置 (可选)</summary>
@@ -446,6 +481,7 @@
             </div>
           </details>
         </div>
+        <!-- 登录提交按钮 -->
         <button class="btn btn-primary btn-block" id="loginSubmitBtn">
           <span id="loginSubmitText">登录</span>
           <div class="spinner spinner-sm" id="loginSpinner" style="display:none;"></div>
@@ -455,11 +491,12 @@
     </div>
   </div>
 
-  <!-- ============ Rename Shelf Modal ============ -->
+  <!-- ============ 重命名书架弹窗 ============ -->
   <div class="modal-overlay" id="renameModal" style="display:none;">
     <div class="modal modal-sm">
       <div class="modal-header">
         <h2>重命名书架</h2>
+        <!-- 关闭按钮 -->
         <button class="modal-close" id="renameModalClose">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
             <path d="M18 6L6 18M6 6l12 12"/>
@@ -471,16 +508,18 @@
           <label for="renameInput">新名称</label>
           <input type="text" id="renameInput" class="form-input" placeholder="输入新名称">
         </div>
+        <!-- 保存按钮 -->
         <button class="btn btn-primary btn-block" id="renameSubmitBtn">保存</button>
       </div>
     </div>
   </div>
 
-  <!-- ============ Download to Shelf Modal ============ -->
+  <!-- ============ 下载到书架弹窗（多选书架） ============ -->
   <div class="modal-overlay" id="downloadShelfModal" style="display:none;">
     <div class="modal modal-sm">
       <div class="modal-header">
         <h2>下载到书架</h2>
+        <!-- 关闭按钮 -->
         <button class="modal-close" id="downloadShelfModalClose">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
             <path d="M18 6L6 18M6 6l12 12"/>
@@ -488,15 +527,17 @@
         </button>
       </div>
       <div class="modal-body">
+        <!-- 书架多选列表 -->
         <div class="shelf-checkbox-list" id="shelfCheckboxList">
-          <!-- Dynamically populated -->
+          <!-- 动态生成 -->
         </div>
+        <!-- 确认按钮 -->
         <button class="btn btn-primary btn-block" id="downloadShelfConfirmBtn">添加到已选书架</button>
       </div>
     </div>
   </div>
 
-  <!-- ============ Toast Container ============ -->
+  <!-- ============ Toast 通知容器 ============ -->
   <div class="toast-container" id="toastContainer"></div>
 
   <script src="/js/app.js"></script>

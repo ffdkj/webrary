@@ -8,35 +8,36 @@
   'use strict';
 
   /* ================================================================
-     Query Params
+     Query Params — URL参数解析
      ================================================================ */
   var params = new URLSearchParams(window.location.search);
-  var PARAM_BOOK_ID = params.get('bookId');
-  var PARAM_TITLE = params.get('title');
-  var PARAM_AUTHOR = params.get('author');
-  var PARAM_EXT = params.get('ext');
-  var PARAM_TOC_HREF = params.get('tocHref');
+  var PARAM_BOOK_ID = params.get('bookId');         // 书籍ID
+  var PARAM_TITLE = params.get('title');             // 书名
+  var PARAM_AUTHOR = params.get('author');           // 作者
+  var PARAM_EXT = params.get('ext');                 // 文件扩展名
+  var PARAM_TOC_HREF = params.get('tocHref');        // 目录链接（用于定位章节）
 
-  var STREAM_URL = '/api/books/' + PARAM_BOOK_ID + '/stream';
-  var META_URL = '/api/books/' + PARAM_BOOK_ID;
-  var TOC_URL = '/api/books/' + PARAM_BOOK_ID + '/toc';
+  var STREAM_URL = '/api/books/' + PARAM_BOOK_ID + '/stream';    // 文件流API地址
+  var META_URL = '/api/books/' + PARAM_BOOK_ID;                   // 元数据API地址
+  var TOC_URL = '/api/books/' + PARAM_BOOK_ID + '/toc';          // 目录API地址
 
   /* ================================================================
-     State
+     State — 阅读器状态
      ================================================================ */
   var viewer = null;           // { type: 'epub'|'pdf'|'txt', book, rendition, ... }
-  var metadata = null;
-  var currentFormat = null;    // 'epub' | 'pdf' | 'txt'
-  var fontSize = parseInt(localStorage.getItem('reader-font-size') || '18', 10);
-  var tocData = [];
-  var pdfPageNum = 1;
-  var pdfTotalPages = 0;
-  var pdfCurrentStartPage = 1;
-  var readerSettings = { readingMode: 'single', pageFit: 'width', preloadCount: 3 };
+  var metadata = null;          // 书籍元数据
+  var currentFormat = null;    // 当前格式：'epub' | 'pdf' | 'txt'
+  var fontSize = parseInt(localStorage.getItem('reader-font-size') || '18', 10);  // 字体大小
+  var tocData = [];             // 目录数据列表
+  var pdfPageNum = 1;           // PDF 当前页码
+  var pdfTotalPages = 0;        // PDF 总页数
+  var pdfCurrentStartPage = 1;  // PDF 当前起始页（双页模式下为左页）
+  var readerSettings = { readingMode: 'single', pageFit: 'width', preloadCount: 3 };  // 阅读器设置
 
   /* ================================================================
-     DOM References
-     ================================================================ */
+      DOM References — DOM引用缓存
+      ================================================================ */
+  // 简化的querySelector别名
   function $(sel) { return document.querySelector(sel); }
 
   var dom = {
@@ -68,18 +69,21 @@
   };
 
   /* ================================================================
-     Utilities
+     Utilities — 工具函数
      ================================================================ */
+  // 隐藏加载覆盖层
   function hideLoading() {
     dom.loadingOverlay.classList.add('hidden');
   }
 
+  // 显示加载覆盖层
   function showLoading(msg) {
     if (!msg) msg = '加载中...';
     dom.loadingOverlay.classList.remove('hidden');
     dom.loadingOverlay.querySelector('.loading-text').textContent = msg;
   }
 
+  // 显示错误信息
   function showError(msg) {
     dom.loadingOverlay.classList.add('hidden');
     dom.errorState.style.display = '';
@@ -87,6 +91,7 @@
     dom.tocBtn.disabled = true;
   }
 
+  // 根据扩展名确定书籍格式类型
   function getFormat(ext) {
     switch ((ext || '').toLowerCase()) {
       case 'epub':
@@ -103,6 +108,7 @@
     }
   }
 
+  // 更新工具栏的标题和作者显示
   function updateToolbarMeta(title, author) {
     dom.toolbarTitle.textContent = title || '未命名书籍';
     if (author) {
@@ -112,6 +118,7 @@
     }
   }
 
+  // 保存阅读进度到本地存储
   function saveProgress(location) {
     if (!PARAM_BOOK_ID) return;
     var key = 'reader-progress-' + PARAM_BOOK_ID;
@@ -127,11 +134,13 @@
       localStorage.setItem(key, JSON.stringify(data));
     } catch (e) { /* storage full, ignore */ }
 
-    // Sync to server for history tracking (non-blocking, debounced)
+    // 同步阅读进度到服务器（防抖3秒，非阻塞）
     syncProgressToServer(location);
   }
 
+  // 上次同步时间戳，用于防抖
   var _lastSyncTime = 0;
+  // 同步进度到后端（非阻塞、防抖3秒）
   function syncProgressToServer(location) {
     var now = Date.now();
     if (now - _lastSyncTime < 3000) return; // debounce 3s
@@ -156,6 +165,7 @@
     }).catch(function () { /* ignore */ });
   }
 
+  // 从本地存储加载上次阅读进度
   function loadProgress() {
     if (!PARAM_BOOK_ID) return null;
     var key = 'reader-progress-' + PARAM_BOOK_ID;
@@ -168,8 +178,9 @@
   }
 
   /* ================================================================
-      Reader Settings
+      Reader Settings — 阅读器设置管理
       ================================================================ */
+  // 从本地存储加载阅读器设置
   function loadSettings() {
     try {
       var raw = localStorage.getItem('reader-settings');
@@ -182,23 +193,27 @@
     } catch (e) { /* ignore */ }
   }
 
+  // 保存阅读器设置到本地存储
   function saveSettings() {
     try {
       localStorage.setItem('reader-settings', JSON.stringify(readerSettings));
     } catch (e) { /* ignore */ }
   }
 
+  // 打开设置面板
   function openSettings() {
     dom.settingsOverlay.classList.add('open');
     dom.settingsModal.style.display = '';
     applySettingsToUI();
   }
 
+  // 关闭设置面板
   function closeSettings() {
     dom.settingsOverlay.classList.remove('open');
     dom.settingsModal.style.display = 'none';
   }
 
+  // 切换设置面板显示/隐藏
   function toggleSettings() {
     if (dom.settingsOverlay.classList.contains('open')) {
       closeSettings();
@@ -207,6 +222,7 @@
     }
   }
 
+  // 将设置值同步到UI控件
   function applySettingsToUI() {
     var modeBtns = dom.readingModeGroup.querySelectorAll('.option-btn');
     modeBtns.forEach(function (btn) {
@@ -219,6 +235,7 @@
     dom.preloadInput.value = readerSettings.preloadCount;
   }
 
+  // 设置阅读模式（单页/双页）
   function setReadingMode(mode) {
     if (readerSettings.readingMode === mode) return;
     readerSettings.readingMode = mode;
@@ -230,6 +247,7 @@
     }
   }
 
+  // 设置页面适配方式（按宽度/按高度）
   function setPageFit(fit) {
     if (readerSettings.pageFit === fit) return;
     readerSettings.pageFit = fit;
@@ -240,10 +258,12 @@
     }
   }
 
+  // 获取当前阅读模式下的翻页步长（单页=1，双页=2）
   function getStepSize() {
     return readerSettings.readingMode === 'double' ? 2 : 1;
   }
 
+  // 确保PDF页码在有效范围内并对齐步长
   function makePageValid(page) {
     var step = getStepSize();
     // Align to step boundary (1, 3, 5... for double, 1, 2, 3... for single)
@@ -257,18 +277,21 @@
   }
 
   /* ================================================================
-     TOC Sidebar
+     TOC Sidebar — 目录侧边栏
      ================================================================ */
+  // 打开目录侧边栏
   function openToc() {
     dom.tocSidebar.classList.add('open');
     dom.tocOverlay.classList.add('open');
   }
 
+  // 关闭目录侧边栏
   function closeToc() {
     dom.tocSidebar.classList.remove('open');
     dom.tocOverlay.classList.remove('open');
   }
 
+  // 切换目录侧边栏显示/隐藏
   function toggleToc() {
     if (dom.tocSidebar.classList.contains('open')) {
       closeToc();
@@ -278,7 +301,7 @@
   }
 
   /**
-   * Flatten epub.js nested TOC into a linear array of { label, href, depth }.
+   * 将 epub.js 嵌套目录展开为线性数组 [{ label, href, depth }]
    */
   function flattenEpubToc(toc) {
     var result = [];
@@ -299,6 +322,7 @@
     return result;
   }
 
+  // 从TXT章节列表构建目录数据
   function buildTocFromChapters(chapters) {
     return chapters.map(function (ch, i) {
       return {
@@ -310,6 +334,7 @@
     });
   }
 
+  // 渲染目录列表到侧边栏
   function renderToc() {
     if (tocData.length === 0) {
       dom.tocList.innerHTML = '<span class="loading-text" style="display:block;padding:20px;">暂无目录</span>';
@@ -327,6 +352,7 @@
       .join('');
   }
 
+  // HTML转义，防止XSS
   function escapeHtml(str) {
     var div = document.createElement('div');
     div.textContent = str;
@@ -334,8 +360,9 @@
   }
 
   /* ================================================================
-     Font Size
+     Font Size — 字体大小管理
      ================================================================ */
+  // 应用字体大小到阅读器和本地存储
   function applyFontSize() {
     dom.fontSizeDisplay.textContent = fontSize;
 
@@ -355,6 +382,7 @@
     } catch (e) { /* ignore */ }
   }
 
+  // 调整字体大小（增加或减少）
   function changeFontSize(delta) {
     var newSize = fontSize + delta;
     if (newSize < 10 || newSize > 36) return;
@@ -363,7 +391,7 @@
   }
 
   /* ================================================================
-     Cleanup — remove old viewer elements
+     Cleanup — 清理旧的阅读器DOM元素
      ================================================================ */
   function cleanupPreviousViewer() {
     // Destroy epub.js book if present
@@ -383,8 +411,9 @@
   }
 
   /* ================================================================
-     epub.js Viewer (EPUB, MOBI, AZW3, FB2)
+     epub.js Viewer — EPUB/MOBI/AZW3/FB2 格式阅读器
      ================================================================ */
+  // 初始化 epub.js 阅读器
   function initEpub() {
     if (typeof ePub === 'undefined') {
       showError('epub.js 库未加载。<br>请检查 /vendor/epub.min.js 是否存在。');
@@ -501,8 +530,9 @@
   }
 
   /* ================================================================
-     PDF.js Viewer
+     PDF.js Viewer — PDF 格式阅读器
      ================================================================ */
+  // 初始化 PDF 阅读器
   function initPdf() {
     cleanupPreviousViewer();
     dom.viewerDiv.style.display = 'none';
@@ -564,6 +594,7 @@
       });
   }
 
+  // 渲染PDF指定起始页（支持单页/双页、按宽度/按高度适配）
   function renderPdfViewport(startPage) {
     var container = document.getElementById('pdfContainer');
     if (!container) return Promise.resolve();
@@ -663,6 +694,7 @@
     });
   }
 
+  // 预加载相邻页面图片以加速翻页
   function preloadAdjacentPages(startPage, step) {
     var n = readerSettings.preloadCount;
     if (n <= 0) return;
@@ -702,12 +734,14 @@
     container.appendChild(buffer);
   }
 
+  // 更新 PDF 导航按钮的启用/禁用状态
   function updatePdfNavState() {
     var step = getStepSize();
     dom.pagePrevBtn.disabled = pdfCurrentStartPage <= 1;
     dom.pageNextBtn.disabled = pdfCurrentStartPage + step > pdfTotalPages;
   }
 
+  // PDF 上一页
   function pdfPrevPage() {
     var step = getStepSize();
     if (pdfCurrentStartPage > 1) {
@@ -715,6 +749,7 @@
     }
   }
 
+  // PDF 下一页
   function pdfNextPage() {
     var step = getStepSize();
     if (pdfCurrentStartPage + step <= pdfTotalPages) {
@@ -723,8 +758,9 @@
   }
 
   /* ================================================================
-     TXT Viewer
+     TXT Viewer — TXT 文本阅读器
      ================================================================ */
+  // 初始化 TXT 阅读器
   function initTxt() {
     cleanupPreviousViewer();
     dom.viewerDiv.style.display = 'none';
@@ -762,6 +798,7 @@
     });
   }
 
+  // 解析TXT文本为HTML（识别章节标题）
   function parseTxtToHtml(text) {
     var lines = text.split(/\r?\n/);
     var chapters = [];
@@ -793,8 +830,9 @@
   }
 
   /* ================================================================
-     Initialization
+     Initialization — 阅读器初始化
      ================================================================ */
+  // 主初始化流程：获取元数据→确定格式→初始化对应阅读器
   function init() {
     if (!PARAM_BOOK_ID) {
       showError('缺少 bookId 参数。<br>请从书架页面打开书籍。');
@@ -855,31 +893,35 @@
   }
 
   /* ================================================================
-     Event Bindings
+     Event Bindings — 事件绑定
      ================================================================ */
+  // 绑定所有阅读器事件监听器
   function bindEvents() {
-    // TOC
+    // 目录侧边栏
     dom.tocBtn.addEventListener('click', toggleToc);
     dom.tocOverlay.addEventListener('click', closeToc);
     dom.tocClose.addEventListener('click', closeToc);
 
-    // Settings
+    // 设置面板
     dom.settingsBtn.addEventListener('click', toggleSettings);
     dom.settingsOverlay.addEventListener('click', closeSettings);
     dom.settingsClose.addEventListener('click', closeSettings);
 
+    // 阅读模式选择
     dom.readingModeGroup.addEventListener('click', function (e) {
       var btn = e.target.closest('.option-btn');
       if (!btn) return;
       setReadingMode(btn.dataset.value);
     });
 
+    // 页面适配方式选择
     dom.pageFitGroup.addEventListener('click', function (e) {
       var btn = e.target.closest('.option-btn');
       if (!btn) return;
       setPageFit(btn.dataset.value);
     });
 
+    // 预加载页数设置
     dom.preloadInput.addEventListener('change', function () {
       var val = parseInt(dom.preloadInput.value, 10);
       if (isNaN(val)) val = 0;
@@ -891,7 +933,7 @@
       if (currentFormat === 'pdf') renderPdfViewport(pdfCurrentStartPage);
     });
 
-    // TOC item clicks
+    // 目录项点击→跳转到对应章节
     dom.tocList.addEventListener('click', function (e) {
       var item = e.target.closest('.toc-item');
       if (!item) return;
@@ -918,11 +960,11 @@
       closeToc();
     });
 
-    // Font size
+    // 字体大小调节按钮
     dom.fontSizeDown.addEventListener('click', function () { changeFontSize(-1); });
     dom.fontSizeUp.addEventListener('click', function () { changeFontSize(1); });
 
-    // Page navigation buttons
+    // 翻页导航按钮
     dom.pagePrevBtn.addEventListener('click', function () {
       if (currentFormat === 'pdf') pdfPrevPage();
       else if (currentFormat === 'epub' && viewer && viewer.rendition) viewer.rendition.prev();
@@ -932,7 +974,7 @@
       else if (currentFormat === 'epub' && viewer && viewer.rendition) viewer.rendition.next();
     });
 
-    // Tap-zone page turning (click/touch on left/right edges)
+    // 触摸/点击区域翻页（左右两侧点击翻页）
     (function () {
       var tapStartX = 0, tapStartY = 0, tapStartTime = 0;
       var suppressMouse = false;
@@ -981,7 +1023,7 @@
       bindZone(zoneR, false);
     })();
 
-    // Keyboard shortcuts
+    // 键盘快捷键：左右箭头翻页，Esc关闭面板
     document.addEventListener('keydown', function (e) {
       // Don't handle when focus is in an input
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -1007,7 +1049,7 @@
       }
     });
 
-    // Cleanup on page unload
+    // 页面卸载前清理 epub.js 资源
     window.addEventListener('beforeunload', function () {
       if (viewer && viewer.type === 'epub' && viewer.book) {
         try { viewer.book.destroy(); } catch (e) { /* ignore */ }
@@ -1016,8 +1058,9 @@
   }
 
   /* ================================================================
-      Start
+      Start — 启动入口
       ================================================================ */
+  // 启动阅读器：加载设置→应用字体→绑定事件→初始化阅读器
   loadSettings();
   applyFontSize();
   bindEvents();

@@ -31,6 +31,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 书籍服务 — 管理书籍的增删改查、书架关联、上传、阅读进度等功能。
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -42,9 +45,13 @@ public class BookService {
     private final ReadingProgressRepository readingProgressRepository;
     private final EbookParserService ebookParserService;
 
+    // 上传文件存储目录
     @Value("${webrary.upload-dir:./data/uploads}")
     private String uploadDir;
 
+    /**
+     * 获取指定书架中的所有书籍（含阅读进度信息）。
+     */
     /**
      * Get all books in a shelf with reading progress info.
      */
@@ -52,9 +59,11 @@ public class BookService {
         Bookshelf shelf = bookshelfRepository.findById(shelfId)
                 .orElseThrow(() -> new RuntimeException("Shelf not found: " + shelfId));
 
+        // 按添加时间降序获取书架中的书籍
         List<ShelfBook> shelfBooks = shelfBookRepository.findByShelfOrderByAddedAtDesc(shelf);
         List<ShelfBookResponse> responses = new ArrayList<>();
 
+        // 遍历每本书，计算未读页数
         for (ShelfBook sb : shelfBooks) {
             Book book = sb.getBook();
             ReadingProgress progress = readingProgressRepository.findByBook(book).orElse(null);
@@ -84,6 +93,9 @@ public class BookService {
     }
 
     /**
+     * 向书架添加书籍。如果书籍记录不存在（按 zlibId 查找），则创建新的 Book 记录。
+     */
+    /**
      * Add a book to a shelf. Creates the Book record if it doesn't exist by zlibId.
      */
     @Transactional
@@ -91,12 +103,14 @@ public class BookService {
         Bookshelf shelf = bookshelfRepository.findById(shelfId)
                 .orElseThrow(() -> new RuntimeException("Shelf not found: " + shelfId));
 
+        // 如果提供了 zlibId，先查找是否已有此书
         Book book;
         if (request.getZlibId() != null) {
             Optional<Book> existing = bookRepository.findByZlibId(request.getZlibId());
             if (existing.isPresent()) {
                 book = existing.get();
             } else {
+                // 创建新的 Z-Library 来源书籍记录
                 book = Book.builder()
                         .zlibId(request.getZlibId())
                         .zlibHash(request.getZlibHash() != null ? request.getZlibHash() : "")
@@ -111,6 +125,7 @@ public class BookService {
                 book = bookRepository.save(book);
             }
         } else {
+            // 创建本地上传的书籍记录
             book = Book.builder()
                     .title(request.getTitle())
                     .author(request.getAuthor())
@@ -123,11 +138,13 @@ public class BookService {
             book = bookRepository.save(book);
         }
 
+        // 检查是否已在该书架中，避免重复添加
         // Check if already in this shelf
         if (shelfBookRepository.existsByShelfAndBook(shelf, book)) {
             return shelfBookRepository.findByShelfAndBook(shelf, book).orElse(null);
         }
 
+        // 创建书架与书的关联记录
         ShelfBook shelfBook = ShelfBook.builder()
                 .shelf(shelf)
                 .book(book)
@@ -136,6 +153,9 @@ public class BookService {
         return shelfBookRepository.save(shelfBook);
     }
 
+    /**
+     * 从书架中移除书籍（不删除 Book 实体本身）。
+     */
     /**
      * Remove a book from a shelf (doesn't delete Book record).
      */
@@ -150,6 +170,10 @@ public class BookService {
     }
 
     /**
+     * 将书籍从一个书架转移到另一个书架。
+     * 如果目标书架已有此书，则仅从源书架移除。
+     */
+    /**
      * Transfer a book from one shelf to another.
      * If the book is already in the target shelf, just remove from source.
      */
@@ -162,9 +186,11 @@ public class BookService {
         Book book = bookRepository.findById(bookId)
                 .orElseThrow(() -> new RuntimeException("Book not found: " + bookId));
 
+        // 从源书架移除
         // Remove from source
         shelfBookRepository.deleteByShelfAndBook(fromShelf, book);
 
+        // 如果目标书架没有此书，则添加
         // Add to target if not already there
         if (!shelfBookRepository.existsByShelfAndBook(toShelf, book)) {
             ShelfBook shelfBook = ShelfBook.builder()
@@ -176,6 +202,9 @@ public class BookService {
     }
 
     /**
+     * 彻底删除书籍：从所有书架移除、删除阅读进度、删除上传文件、删除数据库记录。
+     */
+    /**
      * Delete a book entirely from all shelves and the database.
      */
     @Transactional
@@ -183,13 +212,16 @@ public class BookService {
         Book book = bookRepository.findById(bookId)
                 .orElseThrow(() -> new RuntimeException("Book not found: " + bookId));
 
+        // 从所有书架中移除该书的关联
         // Remove from all shelves
         List<ShelfBook> entries = shelfBookRepository.findByBook(book);
         shelfBookRepository.deleteAll(entries);
 
+        // 删除阅读进度记录
         // Remove reading progress
         readingProgressRepository.findByBook(book).ifPresent(readingProgressRepository::delete);
 
+        // 删除磁盘上的上传文件
         // Delete uploaded file if exists
         if (book.isUploaded() && book.getFilePath() != null) {
             try {
@@ -202,6 +234,10 @@ public class BookService {
     }
 
     /**
+     * 上传电子书文件到指定书架。
+     * 自动解析元数据（标题、作者、封面、页数），保存封面图片并初始化阅读进度。
+     */
+    /**
      * Upload a book file.
      */
     @Transactional
@@ -209,12 +245,14 @@ public class BookService {
         Bookshelf shelf = bookshelfRepository.findById(shelfId)
                 .orElseThrow(() -> new RuntimeException("Shelf not found: " + shelfId));
 
+        // 确保上传目录存在（使用绝对路径）
         // Ensure upload directory exists (use absolute path from working dir)
         Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
         if (!Files.exists(uploadPath)) {
             Files.createDirectories(uploadPath);
         }
 
+        // 生成唯一文件名
         // Generate unique filename
         String originalFilename = file.getOriginalFilename();
         String extension = "";
@@ -224,9 +262,11 @@ public class BookService {
         String storedFilename = UUID.randomUUID().toString() + extension;
         Path filePath = uploadPath.resolve(storedFilename);
 
+        // 保存文件到磁盘
         // Save file
         file.transferTo(filePath.toFile());
 
+        // 解析电子书元数据（标题、作者）
         // Parse ebook metadata
         try {
             EbookMetadata meta = ebookParserService.parseFile(filePath, extension);
@@ -240,6 +280,7 @@ public class BookService {
             log.warn("Failed to parse ebook: {}", e.getMessage());
         }
 
+        // 创建书籍记录
         // Create book record
         Book book = Book.builder()
                 .title(title != null ? title : originalFilename)
@@ -251,9 +292,11 @@ public class BookService {
                 .build();
         book = bookRepository.save(book);
 
+        // 保存封面图片并从元数据更新阅读进度
         // Save cover image and update reading progress from parsed metadata
         try {
             EbookMetadata meta = ebookParserService.parseFile(filePath, extension);
+            // 保存封面图片
             if (meta.getCoverBytes() != null && meta.getCoverBytes().length > 0) {
                 String coverFilename = storedFilename.replace(extension, "_cover"
                         + (meta.getCoverFormat() != null ? "." + meta.getCoverFormat() : ".jpg"));
@@ -262,6 +305,7 @@ public class BookService {
                 book.setCoverUrl("/uploads/" + coverFilename);
                 book = bookRepository.save(book);
             }
+            // 如果解析到了页数，更新阅读进度
             if (meta.getPages() != null && meta.getPages() > 0) {
                 ReadingProgress progress = readingProgressRepository.findByBook(book).orElse(null);
                 if (progress == null) {
@@ -274,6 +318,7 @@ public class BookService {
             log.warn("Failed to save parsed ebook metadata: {}", e.getMessage());
         }
 
+        // 添加到书架
         // Add to shelf
         ShelfBook shelfBook = ShelfBook.builder()
                 .shelf(shelf)
@@ -284,6 +329,9 @@ public class BookService {
     }
 
     /**
+     * 获取书籍的阅读进度（无记录时创建默认进度）。
+     */
+    /**
      * Get reading progress for a book (creates default if not found).
      */
     public ReadingProgress getReadingProgress(Long bookId) {
@@ -291,6 +339,7 @@ public class BookService {
                 .orElseThrow(() -> new RuntimeException("Book not found: " + bookId));
         return readingProgressRepository.findByBook(book)
                 .orElseGet(() -> {
+                    // 无记录时创建默认阅读进度
                     ReadingProgress progress = ReadingProgress.builder()
                             .book(book)
                             .currentPage(0)
@@ -302,6 +351,9 @@ public class BookService {
     }
 
     /**
+     * 更新书籍的阅读进度。
+     */
+    /**
      * Update reading progress for a book.
      */
     @Transactional
@@ -309,6 +361,7 @@ public class BookService {
         Book book = bookRepository.findById(bookId)
                 .orElseThrow(() -> new RuntimeException("Book not found: " + bookId));
 
+        // 查找或创建阅读进度记录
         ReadingProgress progress = readingProgressRepository.findByBook(book)
                 .orElseGet(() -> ReadingProgress.builder()
                         .book(book)
@@ -317,6 +370,7 @@ public class BookService {
                         .finished(false)
                         .build());
 
+        // 更新进度字段
         progress.setCurrentPage(request.getCurrentPage());
         if (request.getTotalPages() > 0) {
             progress.setTotalPages(request.getTotalPages());
@@ -328,9 +382,13 @@ public class BookService {
     }
 
     /**
+     * 获取阅读历史 — 所有有阅读记录的书籍，按最近阅读时间降序排列。
+     */
+    /**
      * Get reading history — all books that have been read, ordered by most recent first.
      */
     public List<HistoryEntry> getReadingHistory() {
+        // 查询所有有阅读时间记录的进度，按时间倒序
         List<ReadingProgress> progresses = readingProgressRepository.findByLastReadAtIsNotNullOrderByLastReadAtDesc();
         List<HistoryEntry> entries = new ArrayList<>();
         for (ReadingProgress p : progresses) {

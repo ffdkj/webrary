@@ -8,41 +8,42 @@
   /* ================================================================
      State
      ================================================================ */
+  // 应用全局状态
   const state = {
-    shelves: [],
-    activeShelfId: null,
-    activeShelfName: '',
-    books: [],
-    totalBookCount: 0,
-    isLoggedIn: false,
-    loading: false,
-    contextMenu: {
+    shelves: [],                     // 书架列表
+    activeShelfId: null,             // 当前选中的书架ID
+    activeShelfName: '',             // 当前选中的书架名称
+    books: [],                       // 当前书架的书籍列表
+    totalBookCount: 0,               // 所有书架的总书籍数
+    isLoggedIn: false,               // Z-Library 登录状态
+    loading: false,                  // 是否正在加载中
+    contextMenu: {                   // 右键菜单状态
       visible: false,
       x: 0,
       y: 0,
       items: [],
       target: null,
     },
-    renameTargetShelfId: null,
-    selectedFile: null,
-    // New: page routing
+    renameTargetShelfId: null,       // 待重命名的书架ID
+    selectedFile: null,              // 上传选择中的文件
+    // 页面路由相关
     currentPage: 'shelf',    // 'shelf' | 'browse' | 'detail' | 'reader'
-    previousPage: 'shelf',
-    detailBook: null,
-    browseBooks: [],
-    detailToc: [],
+    previousPage: 'shelf',           // 上一个页面
+    detailBook: null,                // 详情页当前书籍
+    browseBooks: [],                 // 浏览页书籍列表
+    detailToc: [],                   // 详情页目录数据
     tocCache: {}, // bookId → TocEntry[]
-    detailProgress: null,
-    // Download-to-shelf modal
-    downloadTargetBook: null,
-    selectedShelfIds: [],
-    downloadTasks: [],
-    downloadPollTimer: null,
-    // Auth
-    user: null,
-    // Browse page mode
+    detailProgress: null,            // 详情页阅读进度
+    // 下载到书架弹窗
+    downloadTargetBook: null,        // 待下载的目标书籍
+    selectedShelfIds: [],            // 用户选择的书架ID列表
+    downloadTasks: [],               // 下载任务列表
+    downloadPollTimer: null,         // 下载轮询定时器
+    // 用户认证
+    user: null,                      // 当前登录用户信息
+    // 浏览页模式
     browseMode: 'popular',  // 'popular' | 'search'
-    searchQuery: '',
+    searchQuery: '',                 // 搜索关键词
   };
 
   /* ================================================================
@@ -118,10 +119,11 @@
   };
 
   /* ================================================================
-     API Service
+     API Service — 后端API调用服务
      ================================================================ */
   const API_BASE = '/api';
 
+  // 通用API请求封装，自动处理JSON和错误
   async function api(path, options = {}) {
     const url = `${API_BASE}${path}`;
     const config = {
@@ -152,41 +154,50 @@
   }
 
   /* -- Shelves -- */
+  // 获取所有书架列表
   async function fetchShelves() {
     const resp = await api('/bookshelves');
     return Array.isArray(resp) ? resp : (resp?.data || []);
   }
 
+  // 创建新书架
   async function createShelf(name) {
     return api('/bookshelves', { method: 'POST', body: JSON.stringify({ name }) });
   }
 
+  // 更新书架名称
   async function updateShelf(id, name) {
     return api(`/bookshelves/${id}`, { method: 'PUT', body: JSON.stringify({ name }) });
   }
 
+  // 删除书架
   async function deleteShelf(id) {
     return api(`/bookshelves/${id}`, { method: 'DELETE' });
   }
 
+  // 重新排序书架
   async function reorderShelves(shelfIds) {
     return api('/bookshelves/reorder', { method: 'POST', body: JSON.stringify({ shelfIds }) });
   }
 
   /* -- Books -- */
+  // 获取书架内的书籍列表
   async function fetchBooks(shelfId) {
     const resp = await api(`/books/shelf/${shelfId}`);
     return Array.isArray(resp) ? resp : (resp?.data || []);
   }
 
+  // 将书籍添加到书架
   async function addBookToShelf(shelfId, bookData) {
     return api(`/books/shelf/${shelfId}`, { method: 'POST', body: JSON.stringify(bookData) });
   }
 
+  // 从书架移除书籍
   async function removeBookFromShelf(shelfId, bookId) {
     return api(`/books/shelf/${shelfId}/book/${bookId}`, { method: 'DELETE' });
   }
 
+  // 将书籍从一个书架迁移到另一个书架
   async function transferBook(fromShelfId, toShelfId, bookId) {
     return api('/books/transfer', {
       method: 'POST',
@@ -194,10 +205,12 @@
     });
   }
 
+  // 彻底删除书籍（含文件和数据库记录）
   async function deleteBook(bookId) {
     return api(`/books/${bookId}`, { method: 'DELETE' });
   }
 
+  // 获取书籍阅读进度
   async function getBookProgress(bookId) {
     try {
       return await api(`/books/${bookId}/progress`);
@@ -206,6 +219,7 @@
     }
   }
 
+  // 更新书籍阅读进度
   async function updateBookProgress(bookId, currentPage, totalPages, finished) {
     return api(`/books/${bookId}/progress`, {
       method: 'PUT',
@@ -213,6 +227,7 @@
     });
   }
 
+  // 上传本地书籍文件
   async function uploadBook(file, title, author, shelfId) {
     const formData = new FormData();
     formData.append('file', file);
@@ -223,14 +238,17 @@
   }
 
   /* -- Z-Library -- */
+  // Z-Library 登录绑定
   async function zlibLogin(email, password, domain) {
     return api('/zlibrary/login', { method: 'POST', body: JSON.stringify({ email, password, domain }) });
   }
 
+  // Z-Library 书籍搜索
   async function zlibSearch(params) {
     return api('/zlibrary/search', { method: 'POST', body: JSON.stringify(params) });
   }
 
+  // 查询 Z-Library 登录状态
   async function zlibStatus() {
     try {
       return await api('/zlibrary/status');
@@ -239,23 +257,28 @@
     }
   }
 
+  // Z-Library 登出
   async function zlibLogout() {
     return api('/zlibrary/logout');
   }
 
   /* -- Auth (app-level) -- */
+  // 注册新用户
   async function authRegister(email, password) {
     return api('/auth/register', { method: 'POST', body: JSON.stringify({ email, password }) });
   }
 
+  // 用户登录
   async function authLogin(email, password) {
     return api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
   }
 
+  // 用户登出
   async function authLogout() {
     return api('/auth/logout', { method: 'POST' });
   }
 
+  // 获取当前登录用户信息
   async function authMe() {
     try {
       return await api('/auth/me');
@@ -264,29 +287,35 @@
     }
   }
 
+  // 获取热门书籍列表
   async function fetchMostPopular() {
     return api('/zlibrary/most-popular');
   }
 
+  // 获取 Z-Library 书籍详情
   async function fetchZlibBookDetail(zlibId, hash) {
     return api(`/zlibrary/book/${zlibId}/${hash}`);
   }
 
+  // 从 Z-Library 下载书籍
   async function downloadZlibBook(bookId, hash) {
     return api(`/zlibrary/book/${bookId}/${hash}/download/file`);
   }
 
   /* -- Background Download -- */
+  // 启动后台下载任务
   async function startBackgroundDownload(params) {
     return api('/zlibrary/download/start', { method: 'POST', body: JSON.stringify(params) });
   }
 
+  // 获取下载任务列表
   async function fetchDownloadList() {
     const resp = await api('/zlibrary/download/list');
     return resp && resp.data ? resp.data : [];
   }
 
   /* -- Book TOC -- */
+  // 获取书籍目录
   async function fetchBookToc(bookId) {
     try {
       return await api(`/books/${bookId}/toc`);
@@ -296,8 +325,9 @@
   }
 
   /* ================================================================
-     Toast Notifications
+     Toast Notifications — 消息提示
      ================================================================ */
+  // 显示提示消息
   function showToast(message, type = 'info') {
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
@@ -311,8 +341,9 @@
   }
 
   /* ================================================================
-     Loading & Empty States
+     Loading & Empty States — 加载与空状态管理
      ================================================================ */
+  // 显示加载骨架屏
   function showLoading() {
     state.loading = true;
     dom.booksGrid.style.display = 'none';
@@ -327,6 +358,7 @@
     dom.booksGrid.style.display = 'grid';
   }
 
+  // 隐藏加载状态
   function hideLoading() {
     state.loading = false;
     dom.loadingState.style.display = 'none';
@@ -334,6 +366,7 @@
     toggleEmptyState();
   }
 
+  // 根据书籍数量切换空状态或网格视图
   function toggleEmptyState() {
     if (state.loading) return;
     const hasBooks = state.books.length > 0;
@@ -342,8 +375,9 @@
   }
 
   /* ================================================================
-      Render: Sidebar Login Status
+      Render: Sidebar Login Status — 侧边栏登录状态渲染
       ================================================================ */
+  // 渲染侧边栏的登录状态UI
   function renderLoginStatus() {
     if (state.user) {
       dom.userEmail.textContent = state.user.email;
@@ -367,6 +401,7 @@
     }
   }
 
+  // 检查 Z-Library 登录状态
   async function checkLoginStatus() {
     try {
       const resp = await zlibStatus();
@@ -377,6 +412,7 @@
     renderLoginStatus();
   }
 
+  // 处理登出：清除所有状态并返回认证页
   async function handleAppLogout() {
     try { await zlibLogout(); } catch (e) { /* ignore */ }
     try { await authLogout(); } catch (e) { /* ignore */ }
@@ -387,17 +423,20 @@
     showAuthPage();
   }
 
+  // 显示认证页面
   function showAuthPage() {
     dom.authPage.style.display = 'flex';
     dom.authApp.style.display = 'none';
   }
 
+  // 显示主应用页面
   function showAppPage() {
     dom.authPage.style.display = 'none';
     dom.authApp.style.display = 'flex';
   }
 
-  /* Auth tab switching */
+  /* Auth tab switching — 认证页标签切换 */
+  // 切换登录/注册标签
   function switchAuthTab(tabEl) {
     dom.authTabs.forEach(t => t.classList.remove('active'));
     tabEl.classList.add('active');
@@ -412,6 +451,7 @@
     dom.authError.style.display = 'none';
   }
 
+  // 处理登录/注册表单提交
   async function handleAuthSubmit(mode) {
     const email = mode === 'login' ? dom.authLoginEmail.value.trim() : dom.authRegEmail.value.trim();
     const password = mode === 'login' ? dom.authLoginPass.value.trim() : dom.authRegPass.value.trim();
@@ -439,8 +479,9 @@
   }
 
   /* ================================================================
-     Render: Shelves Tab Bar
+     Render: Shelves Tab Bar — 书架标签栏渲染
      ================================================================ */
+  // 渲染顶部书架标签页
   function renderTabs() {
     const existingEdits = dom.tabBar.querySelectorAll('.tab-name-input');
     existingEdits.forEach((inp) => {
@@ -462,12 +503,14 @@
       .join('');
   }
 
+  // HTML 转义，防止XSS攻击
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
   }
 
+  // 格式化文件大小（字节转可读格式）
   function formatFileSize(bytes) {
     if (bytes == null || bytes === 0) return '0 B';
     const u = ['B', 'KB', 'MB', 'GB'];
@@ -477,8 +520,9 @@
   }
 
   /* ================================================================
-     Render: Book Grid
+     Render: Book Grid — 书籍网格渲染
      ================================================================ */
+  // 渲染当前书架的书籍卡片网格
   function renderBooks() {
     // Reset empty state text for shelf mode
     const emptyTitle = dom.emptyState.querySelector('p:first-of-type');
@@ -565,6 +609,7 @@
     updateTotalCount();
   }
 
+  // 计算书籍未读页数
   function computeUnread(book) {
     if (book.isFinished) return 0;
     if (book.unreadPages != null && book.unreadPages > 0) return book.unreadPages;
@@ -575,6 +620,7 @@
     return book.filesize ? Math.ceil(book.filesize / 1024) : 0;
   }
 
+  // 更新总书籍数量显示
   function updateTotalCount() {
     const total = state.shelves.reduce((sum, s) => sum + (s.bookCount || 0), 0);
     state.totalBookCount = total;
@@ -585,8 +631,9 @@
   }
 
   /* ================================================================
-     Data Loading
+     Data Loading — 数据加载
      ================================================================ */
+  // 加载书架列表
   async function loadShelves() {
     try {
       state.shelves = await fetchShelves();
@@ -611,6 +658,7 @@
     }
   }
 
+  // 加载指定书架的书籍
   async function loadBooks(shelfId) {
     showLoading();
     try {
@@ -626,6 +674,7 @@
     hideLoading();
   }
 
+  // 根据当前页面刷新内容
   async function refreshAll() {
     if (state.currentPage === 'browse') {
       await loadBrowseBooks();
@@ -641,8 +690,9 @@
   }
 
   /* ================================================================
-     Tab Interactions
+     Tab Interactions — 标签页交互
      ================================================================ */
+  // 激活指定书架
   function activateShelf(shelfId) {
     const shelf = state.shelves.find((s) => s.id == shelfId);
     if (!shelf) return;
@@ -655,6 +705,7 @@
     loadBooks(shelf.id);
   }
 
+  // 处理标签点击事件
   function handleTabClick(e) {
     const tab = e.target.closest('.tab-item');
     if (!tab) return;
@@ -663,6 +714,7 @@
     if (shelfId) activateShelf(shelfId);
   }
 
+  // 处理标签双击：进入编辑模式
   function handleTabDblClick(e) {
     const tab = e.target.closest('.tab-item');
     if (!tab) return;
@@ -682,6 +734,7 @@
     input.select();
   }
 
+  // 处理编辑输入框的按键事件
   function handleTabInputKey(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -691,10 +744,12 @@
     }
   }
 
+  // 处理编辑输入框失焦事件
   function handleTabInputBlur(e) {
     commitTabRename(e.target);
   }
 
+  // 提交标签重命名
   async function commitTabRename(input) {
     const shelfId = input.dataset.shelfId;
     const newName = input.value.trim();
@@ -717,12 +772,14 @@
     renderTabs();
   }
 
+  // 取消标签重命名
   function cancelTabRename(input) {
     const tab = input.closest('.tab-item');
     if (tab) tab.classList.remove('editing');
     renderTabs();
   }
 
+  // 全局点击监听：如果点击在编辑标签外部，自动提交重命名
   document.addEventListener('click', (e) => {
     const editingInput = document.querySelector('.tab-name-input');
     if (editingInput && !editingInput.contains(e.target) && !e.target.closest('.tab-item')) {
@@ -731,6 +788,7 @@
   });
 
   /* -- Add shelf -- */
+  // 创建新书架
   async function handleAddShelf() {
     const name = prompt('输入新书架名称：');
     if (!name || !name.trim()) return;
@@ -744,6 +802,7 @@
   }
 
   /* -- Delete shelf -- */
+  // 删除书架
   async function handleDeleteShelf(shelfId) {
     const shelf = state.shelves.find((s) => s.id == shelfId);
     if (!shelf) return;
@@ -758,6 +817,7 @@
   }
 
   /* -- Rename shelf via context menu -- */
+  // 通过右键菜单重命名书架
   async function handleRenameShelf(shelfId) {
     const shelf = state.shelves.find((s) => s.id == shelfId);
     if (!shelf) return;
@@ -768,8 +828,9 @@
   }
 
   /* ================================================================
-     Context Menu System
+     Context Menu System — 右键菜单系统
      ================================================================ */
+  // 显示右键菜单
   function showContextMenu(items, x, y, target) {
     state.contextMenu = { visible: true, x, y, items, target };
     dom.contextMenuInner.innerHTML = items
@@ -822,6 +883,7 @@
     });
   }
 
+  // 隐藏右键菜单
   function hideContextMenu() {
     dom.contextMenu.classList.remove('visible');
     state.contextMenu.visible = false;
@@ -832,9 +894,9 @@
     }, 150);
   }
 
-  /* Context Menu Item Builders */
+  /* Context Menu Item Builders — 右键菜单项构建器 */
 
-  // Book right-click menu
+  // 书籍右键菜单SVG图标集
   const ICONS_SVG = {
     select: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>',
     download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M12 3v12m0 0l-5-5m5 5l5-5"/><path d="M4 17v1a3 3 0 003 3h10a3 3 0 003-3v-1"/></svg>',
@@ -846,6 +908,7 @@
     pencil: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
   };
 
+  // 构建书籍右键菜单项
   function buildBookContextMenu(bookData) {
     const { id, bookId, shelfId, title, author, extension, unread, finished, zlibId, hash } = bookData;
 
@@ -878,6 +941,7 @@
     ];
   }
 
+  // 构建书架标签右键菜单项
   function buildTabContextMenu(shelfId) {
     return [
       { label: '重命名', icon: ICONS_SVG.pencil, action: 'rename-shelf', payload: shelfId },
@@ -886,7 +950,8 @@
     ];
   }
 
-  /* Context Menu Click Handler */
+  /* Context Menu Click Handler — 右键菜单点击处理 */
+  // 处理右键菜单项点击事件
   function handleContextMenuClick(e) {
     const item = e.target.closest('.context-menu-item');
     if (!item) return;
@@ -910,12 +975,14 @@
     }
   }
 
-  /* Context Menu Actions */
+  /* Context Menu Actions — 右键菜单操作实现 */
+  // 选择书籍（切换选中状态）
   function handleSelectBook(bookId) {
     const card = document.querySelector(`.book-card[data-book-id="${bookId}"]`);
     if (card) card.classList.toggle('selected');
   }
 
+  // 下载书籍
   async function handleDownloadBook(payloadStr) {
     const { localBookId, zlibId, hash } = JSON.parse(payloadStr);
     showToast('准备下载...', 'info');
@@ -935,6 +1002,7 @@
     }
   }
 
+  // 标记书籍为已读
   async function handleMarkRead({ id, finished }) {
     try {
       const progress = await getBookProgress(id);
@@ -947,6 +1015,7 @@
     }
   }
 
+  // 标记书籍为未读
   async function handleMarkUnread({ id, finished }) {
     try {
       await updateBookProgress(id, 0, 100, false);
@@ -957,6 +1026,7 @@
     }
   }
 
+  // 迁移书籍到其他书架
   async function handleTransferBook({ fromShelfId, toShelfId, bookId }) {
     try {
       await transferBook(fromShelfId, toShelfId, bookId);
@@ -967,12 +1037,14 @@
     }
   }
 
+  // 追踪书籍更新（开发中）
   async function handleTrackBook(bookId) {
     showToast('正在追踪更新...', 'info');
     // TODO: implement actual tracking logic
     setTimeout(() => showToast('追踪功能开发中', 'info'), 500);
   }
 
+  // 从书架移除书籍（可选彻底删除）
   async function handleRemoveFromShelf({ shelfId, bookId }) {
     if (!confirm('确定从书架中移除此书吗？')) return;
     if (confirm('同时删除服务器上的文件数据和数据库记录？')) {
@@ -997,8 +1069,9 @@
   }
 
   /* ================================================================
-     Modal Management
+     Modal Management — 弹窗管理
      ================================================================ */
+  // 显示指定弹窗
   function showModal(name) {
     const modalMap = {
       search: 'searchModal',
@@ -1015,6 +1088,7 @@
     }
   }
 
+  // 隐藏指定弹窗
   function hideModal(name) {
     const modalMap = {
       search: 'searchModal',
@@ -1031,17 +1105,20 @@
     }
   }
 
+  // 隐藏所有弹窗
   function hideAllModals() {
     $$('.modal-overlay').forEach((m) => { m.style.display = 'none'; });
     document.body.style.overflow = '';
   }
 
   /* -- Search Modal -- */
+  // 打开搜索弹窗
   async function handleSearch() {
     showModal('search');
     setTimeout(() => $('#searchQuery').focus(), 100);
   }
 
+  // 执行搜索操作
   async function executeSearch() {
     const query = $('#searchQuery').value.trim();
     if (!query) return;
@@ -1080,6 +1157,7 @@
   /* -- Old search list renderer removed; search now uses browse book-card grid -- */
 
   /* -- Upload Modal -- */
+  // 打开上传弹窗并初始化
   function handleUploadOpen() {
     // Populate shelf selector
     const select = $('#uploadShelf');
@@ -1096,6 +1174,7 @@
     showModal('upload');
   }
 
+  // 提交上传表单
   async function handleUploadSubmit() {
     const file = state.selectedFile;
     if (!file) {
@@ -1131,6 +1210,7 @@
   }
 
   /* -- Login Modal -- */
+  // 打开 Z-Library 绑定弹窗
   function handleLoginOpen() {
     $('#loginError').style.display = 'none';
     $('#loginSubmitText').style.display = 'inline';
@@ -1140,6 +1220,7 @@
     setTimeout(() => $('#loginEmail').focus(), 100);
   }
 
+  // 提交 Z-Library 绑定表单
   async function handleLoginSubmit() {
     const email = $('#loginEmail').value.trim();
     const password = $('#loginPassword').value.trim();
@@ -1181,6 +1262,7 @@
     $('#loginSubmitBtn').disabled = false;
   }
 
+  // 处理 Z-Library 登出
   async function handleLogout() {
     try {
       await zlibLogout();
@@ -1191,6 +1273,7 @@
   }
 
   /* -- Rename Modal -- */
+  // 提交重命名表单
   async function handleRenameSubmit() {
     const name = $('#renameInput').value.trim();
     const shelfId = state.renameTargetShelfId;
@@ -1210,8 +1293,9 @@
   }
 
   /* ================================================================
-     Book Card Interactions
+     Book Card Interactions — 书籍卡片交互
      ================================================================ */
+  // 处理书籍卡片点击→进入详情页
   async function handleBookClick(e) {
     const card = e.target.closest('.book-card');
     if (!card) return;
@@ -1264,10 +1348,12 @@
     navigateTo('detail', bookData);
   }
 
+  // 显示书籍详情（独立调用入口）
   function showBookDetail(bookData) {
     navigateTo('detail', bookData);
   }
 
+  // 处理阅读按钮点击→打开阅读器
   function handleReadBook(bookId) {
     const card = document.querySelector(`.book-card[data-book-id="${bookId}"]`);
     if (!card) return;
@@ -1305,6 +1391,7 @@
     navigateTo('detail', bookData);
   }
 
+  // 处理书籍卡片右键菜单
   function handleBookRightClick(e) {
     const card = e.target.closest('.book-card');
     if (!card) return;
@@ -1327,6 +1414,7 @@
     showContextMenu(menu, e.clientX, e.clientY, card);
   }
 
+  // 处理书籍选项按钮点击（...按钮）
   function handleBookOptionsBtn(e) {
     e.stopPropagation();
     const btn = e.target.closest('.cover-options-btn');
@@ -1354,8 +1442,9 @@
   }
 
   /* ================================================================
-     Tab Context Menu & Drag
+     Tab Context Menu & Drag — 标签页右键菜单与拖拽排序
      ================================================================ */
+  // 处理标签页右键菜单
   function handleTabRightClick(e) {
     const tab = e.target.closest('.tab-item');
     if (!tab) return;
@@ -1367,9 +1456,10 @@
     showContextMenu(menu, e.clientX, e.clientY, tab);
   }
 
-  // Drag-and-drop reorder for tabs
+  // Drag-and-drop reorder for tabs — 标签页拖拽排序
   let dragSrcShelfId = null;
 
+  // 拖拽开始：记录源书架ID
   function handleTabDragStart(e) {
     const tab = e.target.closest('.tab-item');
     if (!tab) return;
@@ -1379,17 +1469,20 @@
     tab.style.opacity = '0.4';
   }
 
+  // 拖拽结束：恢复透明度
   function handleTabDragEnd(e) {
     const tab = e.target.closest('.tab-item');
     if (tab) tab.style.opacity = '1';
     dragSrcShelfId = null;
   }
 
+  // 拖拽悬停：允许放置
   function handleTabDragOver(e) {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   }
 
+  // 拖拽放置：重新排序书架
   async function handleTabDrop(e) {
     e.preventDefault();
     const dropTab = e.target.closest('.tab-item');
@@ -1420,12 +1513,14 @@
   }
 
   /* ================================================================
-     Upload Drag & Drop
+     Upload Drag & Drop — 文件上传拖放处理
      ================================================================ */
+  // 点击上传区域触发文件选择
   function handleUploadDropzoneClick() {
     $('#uploadFileInput').click();
   }
 
+  // 文件选择变更处理
   function handleUploadFileChange(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -1436,18 +1531,21 @@
     }
   }
 
+  // 拖放悬停：高亮上传区域
   function handleUploadDropzoneDragOver(e) {
     e.preventDefault();
     e.stopPropagation();
     $('#uploadDropzone').classList.add('drag-over');
   }
 
+  // 拖放离开：取消高亮
   function handleUploadDropzoneDragLeave(e) {
     e.preventDefault();
     e.stopPropagation();
     $('#uploadDropzone').classList.remove('drag-over');
   }
 
+  // 拖放释放：接收文件
   function handleUploadDropzoneDrop(e) {
     e.preventDefault();
     e.stopPropagation();
@@ -1463,8 +1561,9 @@
   }
 
   /* ================================================================
-     Sidebar Navigation & Responsive
+     Sidebar Navigation & Responsive — 侧边栏导航与响应式
      ================================================================ */
+  // 处理侧边栏导航项点击
   function handleSidebarNavClick(e) {
     const item = e.target.closest('.nav-item');
     if (!item) return;
@@ -1501,13 +1600,15 @@
     }
   }
 
+  // 切换侧边栏展开/收起
   function handleSidebarToggle() {
     dom.sidebar.classList.toggle('open');
   }
 
   /* ================================================================
-     Page Routing & Management
+     Page Routing & Management — 页面路由与管理
      ================================================================ */
+  // 核心路由：导航到指定页面
   function navigateTo(page, data) {
     state.previousPage = state.currentPage;
     state.currentPage = page;
@@ -1611,6 +1712,7 @@
     updateHeader();
   }
 
+  // 根据当前页面更新标题栏显示
   function updateHeader() {
     switch (state.currentPage) {
       case 'shelf': {
@@ -1639,6 +1741,7 @@
     }
   }
 
+  // 返回上一页面
   function goBack() {
     if (state.currentPage === 'detail' || state.currentPage === 'reader') {
       navigateTo(state.previousPage);
@@ -1648,8 +1751,9 @@
   }
 
   /* ================================================================
-     Browse Page
+     Browse Page — 浏览页面
      ================================================================ */
+  // 更新 Z-Library 下载剩余次数
   async function updateDownloadLimit() {
     const span = dom.loginBtn.querySelector('span');
     try {
@@ -1664,6 +1768,7 @@
     }
   }
 
+  // 加载热门书籍列表
   async function loadBrowseBooks() {
     showLoading();
     state.browseMode = 'popular';
@@ -1693,6 +1798,7 @@
     hideLoading();
   }
 
+  // 渲染浏览页书籍列表
   function renderBrowseBooks() {
     const books = state.browseBooks;
     if (books.length === 0) {
@@ -1738,8 +1844,9 @@
   }
 
   /* ================================================================
-     Book Detail Page
+     Book Detail Page — 书籍详情页
      ================================================================ */
+  // 渲染书籍详情页（封面、信息、标签、目录、阅读进度等）
   async function renderDetailPage() {
     const book = state.detailBook;
     if (!book) return;
@@ -1853,6 +1960,7 @@
     }
   }
 
+  // 加载详情页目录数据
   async function loadDetailToc() {
     const book = state.detailBook;
     if (!book) { console.warn('loadDetailToc: no book'); return; }
@@ -1915,6 +2023,7 @@
     }
   }
 
+  // 渲染详情页目录列表
   function renderToc() {
     const toc = state.detailToc;
     dom.tocCount.textContent = toc.length;
@@ -1950,6 +2059,7 @@
       .join('');
   }
 
+  // 加载当前书籍的阅读进度
   async function loadDetailProgress() {
     const book = state.detailBook;
     if (!book || book.source !== '本地书库') return;
@@ -1971,6 +2081,7 @@
     }
   }
 
+  // 异步加载 Z-Library 附加元数据（含读取链接等）
   async function loadDetailMetadata() {
     const book = state.detailBook;
     if (!book.zlibId || !book.zlibHash) return;
@@ -2041,6 +2152,7 @@
     }
   }
 
+  // 切换详情页描述文本的展开/收起
   function handleDetailDescToggle() {
     const isExpanded = dom.detailDescText.classList.contains('expanded');
     if (isExpanded) {
@@ -2053,8 +2165,9 @@
   }
 
   /* ================================================================
-     Detail Page: Action Buttons
+     Detail Page: Action Buttons — 详情页操作按钮
      ================================================================ */
+  // 处理在线阅读按钮
   async function handleDetailReadOnline() {
     const book = state.detailBook;
     if (!book) return;
@@ -2082,6 +2195,7 @@
     }
   }
 
+  // 处理下载到书架按钮
   function handleDetailDownloadToShelf() {
     const book = state.detailBook;
     if (!book) return;
@@ -2089,10 +2203,12 @@
     showDownloadShelfModal();
   }
 
+  // 处理收藏按钮（开发中）
   function handleDetailFav() {
     showToast('收藏功能开发中', 'info');
   }
 
+  // 处理本地阅读按钮
   function handleDetailLocalRead() {
     const currentBook = state.detailBook;
     if (!currentBook) return;
@@ -2110,8 +2226,9 @@
   }
 
   /* ================================================================
-     Download to Shelf Modal
+     Download to Shelf Modal — 下载到书架弹窗
      ================================================================ */
+  // 显示选择书架弹窗
   function showDownloadShelfModal() {
     const shelves = state.shelves;
     state.selectedShelfIds = [];
@@ -2140,6 +2257,7 @@
     showModal('downloadShelf');
   }
 
+  // 处理书架复选框点击（切换选择状态）
   function handleShelfCheckboxClick(e) {
     const item = e.target.closest('.shelf-checkbox-item');
     if (!item) return;
@@ -2154,6 +2272,7 @@
     }
   }
 
+  // 确认下载到选定书架
   async function handleDownloadShelfConfirm() {
     if (state.selectedShelfIds.length === 0) {
       showToast('请至少选择一个书架', 'error');
@@ -2231,7 +2350,7 @@
     }
   }
 
-  // Close sidebar on outside click (mobile)
+  // Close sidebar on outside click (mobile) — 移动端点击侧边栏外部关闭
   document.addEventListener('click', (e) => {
     if (
       window.innerWidth <= 768 &&
@@ -2245,8 +2364,9 @@
   });
 
   /* ================================================================
-     Keyboard Shortcuts
+     Keyboard Shortcuts — 键盘快捷键
      ================================================================ */
+  // 全局键盘快捷键处理：Esc关闭/Ctrl+F搜索/Ctrl+R刷新
   function handleKeydown(e) {
     // Escape: close context menu, modals, or go back from detail/browse
     if (e.key === 'Escape') {
@@ -2285,8 +2405,9 @@
   }
 
   /* ================================================================
-     Downloads Page
+     Downloads Page — 下载管理页面
      ================================================================ */
+  // 加载下载任务列表
   async function loadDownloadTasks() {
     try {
       const list = await fetchDownloadList();
@@ -2309,6 +2430,7 @@
     renderDownloadsPage();
   }
 
+  // 渲染下载任务列表
   function renderDownloadsPage() {
     const tasks = state.downloadTasks;
     dom.emptyState.style.display = 'none';
@@ -2362,6 +2484,7 @@
       .join('');
   }
 
+  // 启动下载任务轮询
   function startDownloadPolling() {
     stopDownloadPolling();
     state.downloadPollTimer = setInterval(async () => {
@@ -2370,6 +2493,7 @@
     }, 2000);
   }
 
+  // 停止下载任务轮询
   function stopDownloadPolling() {
     if (state.downloadPollTimer) {
       clearInterval(state.downloadPollTimer);
@@ -2377,6 +2501,7 @@
     }
   }
 
+  // 渲染阅读历史页面
   async function renderHistoryPage() {
     // Hide shelf/browse grid; use a dedicated container inside booksContainer
     dom.booksGrid.style.display = 'none';
@@ -2469,20 +2594,21 @@
   }
 
   /* ================================================================
-     Event Binding
+     Event Binding — 事件绑定集中管理
      ================================================================ */
+  // 绑定所有DOM事件监听器
   function bindEvents() {
-    // Sidebar
+    // 侧边栏导航
     dom.sidebarNav.addEventListener('click', handleSidebarNavClick);
     dom.sidebarToggle.addEventListener('click', handleSidebarToggle);
     dom.loginBtn.addEventListener('click', handleLoginOpen);
 
-    // Header
+    // 顶部工具栏
     dom.searchBtn.addEventListener('click', handleSearch);
     dom.refreshBtn.addEventListener('click', refreshAll);
     dom.uploadBtn.addEventListener('click', handleUploadOpen);
 
-    // Tab bar
+    // 书架标签栏交互
     dom.tabBar.addEventListener('click', handleTabClick);
     dom.tabBar.addEventListener('dblclick', handleTabDblClick);
     dom.tabBar.addEventListener('contextmenu', handleTabRightClick);
@@ -2492,7 +2618,7 @@
     dom.tabBar.addEventListener('drop', handleTabDrop);
     dom.addShelfBtn.addEventListener('click', handleAddShelf);
 
-    // Global: detect tab name input keydown
+    // 标签名输入框的键盘事件
     document.addEventListener('keydown', (e) => {
       if (e.target.classList.contains('tab-name-input')) {
         handleTabInputKey(e);
@@ -2509,7 +2635,7 @@
       true
     );
 
-    // Book grid
+    // 书籍网格交互
     dom.booksGrid.addEventListener('click', handleBookClick);
     dom.booksGrid.addEventListener('contextmenu', handleBookRightClick);
     dom.booksGrid.addEventListener('click', (e) => {
@@ -2524,7 +2650,7 @@
       }
     });
 
-    // Context menu
+    // 右键菜单
     dom.contextMenu.addEventListener('click', handleContextMenuClick);
     document.addEventListener('click', (e) => {
       if (!dom.contextMenu.contains(e.target)) {
@@ -2532,14 +2658,14 @@
       }
     });
 
-    // Search modal
+    // 搜索弹窗
     $('#searchSubmitBtn').addEventListener('click', executeSearch);
     $('#searchModalClose').addEventListener('click', () => hideModal('search'));
     $('#searchModal').addEventListener('click', (e) => {
       if (e.target === $('#searchModal')) hideModal('search');
     });
 
-    // Upload modal
+    // 上传弹窗
     $('#uploadModalClose').addEventListener('click', () => hideModal('upload'));
     $('#uploadModal').addEventListener('click', (e) => {
       if (e.target === $('#uploadModal')) hideModal('upload');
@@ -2551,7 +2677,7 @@
     $('#uploadDropzone').addEventListener('drop', handleUploadDropzoneDrop);
     $('#uploadSubmitBtn').addEventListener('click', handleUploadSubmit);
 
-    // Login modal
+    // 登录弹窗
     $('#loginSubmitBtn').addEventListener('click', handleLoginSubmit);
     $('#loginModalClose').addEventListener('click', () => hideModal('login'));
     $('#loginModal').addEventListener('click', (e) => {
@@ -2561,7 +2687,7 @@
       if (e.key === 'Enter') handleLoginSubmit();
     });
 
-    // Rename modal
+    // 重命名弹窗
     $('#renameSubmitBtn').addEventListener('click', handleRenameSubmit);
     $('#renameModalClose').addEventListener('click', () => hideModal('rename'));
     $('#renameModal').addEventListener('click', (e) => {
@@ -2572,22 +2698,22 @@
       if (e.key === 'Escape') hideModal('rename');
     });
 
-    // Keyboard
+    // 全局键盘快捷键
     document.addEventListener('keydown', handleKeydown);
 
-    // Detail page — header back button
+    // 详情页 — 返回按钮
     dom.headerBackBtn.addEventListener('click', goBack);
 
-    // Detail page — description toggle
+    // 详情页 — 描述展开/收起
     dom.detailDescMore.addEventListener('click', handleDetailDescToggle);
 
-    // Detail page — action buttons
+    // 详情页 — 操作按钮
     dom.detailReadOnline.addEventListener('click', handleDetailReadOnline);
     dom.detailDownloadToShelf.addEventListener('click', handleDetailDownloadToShelf);
     dom.detailFavBtn.addEventListener('click', handleDetailFav);
     dom.detailLocalRead.addEventListener('click', handleDetailLocalRead);
 
-    // Detail page — TOC search
+    // 详情页 — 目录搜索筛选
     dom.tocSearch.addEventListener('input', (e) => {
       const query = e.target.value.toLowerCase();
       const items = dom.tocList.querySelectorAll('.toc-item');
@@ -2599,7 +2725,7 @@
       });
     });
 
-    // Detail page — TOC sort
+    // 详情页 — 目录排序切换
     let tocSortAsc = true;
     dom.tocSortBtn.addEventListener('click', () => {
       tocSortAsc = !tocSortAsc;
@@ -2611,7 +2737,7 @@
       renderToc();
     });
 
-    // Detail page — TOC item click → open reader at chapter
+    // 详情页 — 目录项点击→打开阅读器定位到章节
     dom.tocList.addEventListener('click', (e) => {
       const item = e.target.closest('.toc-item');
       if (!item) return;
@@ -2630,10 +2756,10 @@
       );
     });
 
-    // Detail page — continue reading
+    // 详情页 — 继续阅读按钮
     dom.continueReadingBtn.addEventListener('click', handleDetailReadOnline);
 
-    // Download-to-shelf modal
+    // 下载到书架弹窗
     dom.shelfCheckboxList.addEventListener('click', handleShelfCheckboxClick);
     dom.downloadShelfConfirmBtn.addEventListener('click', handleDownloadShelfConfirm);
     dom.downloadShelfModalClose.addEventListener('click', () => hideModal('downloadShelf'));
@@ -2641,7 +2767,7 @@
       if (e.target === dom.downloadShelfModal) hideModal('downloadShelf');
     });
 
-    // Auth page
+    // 认证页面
     dom.authTabs.forEach(tab => tab.addEventListener('click', () => switchAuthTab(tab)));
     dom.appLogoutBtn.addEventListener('click', handleAppLogout);
     $('#authLoginPass').addEventListener('keydown', (e) => {
@@ -2651,11 +2777,11 @@
       if (e.key === 'Enter') handleAuthSubmit('register');
     });
 
-    // Expose auth handlers for inline onclick in HTML
+    // 暴露认证处理函数给内联 onclick 使用
     window._switchAuthTab = switchAuthTab;
     window._handleAuthSubmit = handleAuthSubmit;
 
-    // Window resize - close sidebar on mobile
+    // 窗口大小改变时，在桌面端收起侧边栏
     window.addEventListener('resize', () => {
       if (window.innerWidth > 768) {
         dom.sidebar.classList.remove('open');
@@ -2664,12 +2790,13 @@
   }
 
   /* ================================================================
-     Init
+     Init — 应用初始化入口
      ================================================================ */
+  // 应用启动：绑定事件、检查认证、加载数据
   async function init() {
     bindEvents();
 
-    // Check app auth first
+    // 检查用户认证状态
     try {
       const resp = await authMe();
       if (resp && resp.success && resp.data) {

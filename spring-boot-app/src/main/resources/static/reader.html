@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     /* ==========================================================
-       Reader — CSS Variables & Reset
+       阅读器 — CSS 自定义变量与基础重置
        ========================================================== */
     :root {
       --bg: #080808;
@@ -60,14 +60,14 @@
 
     a { color: inherit; text-decoration: none; }
 
-    /* Scrollbar */
+    /* 滚动条样式 */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--muted-dark); }
 
     /* ==========================================================
-       Layout
+       布局
        ========================================================== */
     .app {
       display: flex;
@@ -78,7 +78,7 @@
     }
 
     /* ==========================================================
-       Toolbar
+       顶部工具栏
        ========================================================== */
     .toolbar {
       display: flex;
@@ -165,7 +165,7 @@
     }
 
     /* ==========================================================
-       Main Reader Area
+       主阅读区域
        ========================================================== */
     .reader-area {
       flex: 1;
@@ -174,7 +174,7 @@
       background: var(--surface);
     }
 
-    /* Tap zones for page turning — overlay left/right edges */
+    /* 点击翻页区域 — 覆盖在阅读区左右两侧 */
     .reader-tap-zone {
       position: absolute;
       top: 0;
@@ -186,7 +186,7 @@
     .reader-tap-left  { left: 0;   cursor: w-resize; }
     .reader-tap-right { right: 0;  cursor: e-resize; }
 
-    /* EPUB viewer — epub.js renders an iframe inside #viewer */
+    /* EPUB 阅读器 — epub.js 在 #viewer 内渲染一个 iframe */
     #viewer {
       position: absolute;
       inset: 0;
@@ -201,7 +201,7 @@
       background: #121212;
     }
 
-    /* PDF container */
+    /* PDF 阅读容器 */
     .pdf-container {
       width: 100%;
       height: 100%;
@@ -225,7 +225,7 @@
       border-radius: 2px;
     }
 
-    /* TXT reader */
+    /* TXT 阅读器 */
     .txt-reader {
       width: 100%;
       height: 100%;
@@ -257,7 +257,7 @@
     }
 
     /* ==========================================================
-       TOC Sidebar
+       目录侧边栏
        ========================================================== */
     .toc-overlay {
       position: fixed;
@@ -361,7 +361,7 @@
     }
 
     /* ==========================================================
-       Loading Spinner
+       加载动画
        ========================================================== */
     .loading-overlay {
       position: absolute;
@@ -400,7 +400,7 @@
     }
 
     /* ==========================================================
-       Error State
+       错误页面
        ========================================================== */
     .error-state {
       position: absolute;
@@ -443,7 +443,7 @@
     }
 
     /* ==========================================================
-       Responsive
+       响应式布局
        ========================================================== */
     @media (max-width: 800px) {
       .toolbar-subtitle { display: none; }
@@ -459,7 +459,7 @@
     }
 
     /* ==========================================================
-       Settings Modal
+       设置弹窗
        ========================================================== */
     .settings-overlay {
       position: fixed;
@@ -498,6 +498,7 @@
       font-family: "Microsoft YaHei", "Noto Sans SC", sans-serif;
     }
 
+    /* 设置标签页 */
     .settings-tabs {
       display: flex;
       align-items: center;
@@ -662,9 +663,10 @@
 </head>
 <body>
   <div class="app">
-    <!-- ===== Toolbar ===== -->
+    <!-- ===== 顶部工具栏 ===== -->
     <header class="toolbar" id="toolbar">
       <div class="toolbar-left">
+        <!-- 返回书架按钮 -->
         <a class="toolbar-btn" href="/index.html" title="返回书架">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="15,18 9,12 15,6"/>
@@ -678,6 +680,7 @@
       </div>
 
       <div class="toolbar-right">
+        <!-- 目录按钮 -->
         <button class="toolbar-btn" id="tocBtn" title="目录" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M4 6h16M4 12h16M4 18h16"/>
@@ -685,6 +688,7 @@
         </button>
         <span class="toolbar-divider"></span>
 
+        <!-- 阅读设置按钮 -->
         <button class="toolbar-btn" id="settingsBtn" title="阅读设置">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"></path>
@@ -692,12 +696,14 @@
         </button>
         <span class="toolbar-divider"></span>
 
+        <!-- 缩小字体按钮 -->
         <button class="toolbar-btn" id="fontSizeDown" title="缩小字体">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M5 12h14"/>
           </svg>
         </button>
         <span class="font-size-display" id="fontSizeDisplay">16</span>
+        <!-- 放大字体按钮 -->
         <button class="toolbar-btn" id="fontSizeUp" title="放大字体">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M12 5v14M5 12h14"/>
@@ -706,11 +712,13 @@
 
         <span class="toolbar-divider" id="pageDivider"></span>
 
+        <!-- 上一页按钮 -->
         <button class="toolbar-btn" id="pagePrevBtn" title="上一页" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <polyline points="15,18 9,12 15,6"/>
           </svg>
         </button>
+        <!-- 下一页按钮 -->
         <button class="toolbar-btn" id="pageNextBtn" title="下一页" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <polyline points="9,18 15,12 9,6"/>
@@ -719,18 +727,18 @@
       </div>
     </header>
 
-    <!-- ===== Reader Area ===== -->
+    <!-- ===== 阅读区域 ===== -->
     <div class="reader-area" id="readerArea">
-      <!-- epub.js renders its iframe inside this div -->
+      <!-- epub.js 在此 div 内渲染 iframe -->
       <div id="viewer"></div>
 
-      <!-- Loading overlay -->
+      <!-- 加载覆盖层 -->
       <div class="loading-overlay" id="loadingOverlay">
         <div class="spinner"></div>
         <span class="loading-text">加载中...</span>
       </div>
 
-      <!-- Error state (hidden by default) -->
+      <!-- 错误状态（默认隐藏） -->
       <div class="error-state" id="errorState" style="display:none;">
         <div class="error-icon">⚠️</div>
         <p class="error-message" id="errorMessage"></p>
@@ -738,11 +746,12 @@
       </div>
     </div>
 
-    <!-- ===== TOC Overlay + Sidebar ===== -->
+    <!-- ===== 目录遮罩与侧边栏 ===== -->
     <div class="toc-overlay" id="tocOverlay"></div>
     <aside class="toc-sidebar" id="tocSidebar">
       <div class="toc-sidebar-header">
         <span class="toc-sidebar-title">目录</span>
+        <!-- 关闭目录按钮 -->
         <button class="toc-sidebar-close" id="tocClose" title="关闭">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
             <path d="M18 6L6 18M6 6l12 12"/>
@@ -754,12 +763,14 @@
       </div>
     </aside>
 
-    <!-- ===== Settings Modal ===== -->
+    <!-- ===== 阅读设置弹窗 ===== -->
     <div class="settings-overlay" id="settingsOverlay"></div>
     <div class="settings-modal" id="settingsModal" style="display:none;">
+      <!-- 设置标签页 -->
       <div class="settings-tabs">
         <button class="settings-tab active">阅读模式</button>
         <div style="flex:1;"></div>
+        <!-- 关闭设置按钮 -->
         <button class="settings-close" id="settingsClose" title="关闭">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
             <path d="M18 6L6 18M6 6l12 12"/>
@@ -767,7 +778,7 @@
         </button>
       </div>
       <div class="settings-content">
-        <!-- Reading Mode (PDF only) -->
+        <!-- 阅读模式（仅PDF有效） -->
         <div class="settings-section">
           <div class="settings-section-title">阅读模式（PDF有效）</div>
           <div class="option-group" id="readingModeGroup">
@@ -776,7 +787,7 @@
           </div>
         </div>
 
-        <!-- Page Fit -->
+        <!-- 页面适配 -->
         <div class="settings-section">
           <div class="settings-section-title">页面适配</div>
           <div class="option-group" id="pageFitGroup">
@@ -789,7 +800,7 @@
           </div>
         </div>
 
-        <!-- Preload -->
+        <!-- 预加载设置 -->
         <div class="settings-section">
           <div class="settings-section-title">预加载（PDF有效）</div>
           <div class="preload-row">
@@ -801,11 +812,11 @@
     </div>
   </div>
 
-  <!-- ===== Vendor scripts (order matters: JSZip before epub.js) ===== -->
+  <!-- ===== 第三方库脚本（加载顺序重要：JSZip 在 epub.js 之前） ===== -->
   <script src="/vendor/jszip.min.js"></script>
   <script src="/vendor/epub.min.js"></script>
 
-  <!-- ===== Reader logic (regular script, epub.js adds ePub globally) ===== -->
+  <!-- ===== 阅读器逻辑脚本（epub.js 全局暴露 ePub 对象） ===== -->
   <script src="/js/reader.js"></script>
 </body>
 </html>
