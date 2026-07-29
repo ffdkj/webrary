@@ -854,7 +854,7 @@
       .map((s) => ({
         label: s.name,
         action: 'transfer-book',
-        payload: JSON.stringify({ bookId: id, fromShelfId: shelfId, toShelfId: s.id }),
+        payload: JSON.stringify({ bookId: bookId, fromShelfId: shelfId, toShelfId: s.id }),
       }));
 
     // Format submenu: available formats
@@ -867,14 +867,14 @@
     return [
       { label: '选择', icon: ICONS_SVG.select, action: 'select-book', payload: id },
       { label: '下载', icon: ICONS_SVG.download, action: 'download-book', payload: JSON.stringify({ localBookId: bookId, zlibId, hash }), submenu: formatsSubmenu },
-      { label: '标记为已读', icon: ICONS_SVG.check, action: 'mark-read', payload: JSON.stringify({ id, finished: true }) },
-      { label: '标记为未读', icon: ICONS_SVG.eyeSlash, action: 'mark-unread', payload: JSON.stringify({ id, finished: false }) },
+      { label: '标记为已读', icon: ICONS_SVG.check, action: 'mark-read', payload: JSON.stringify({ id: bookId, finished: true }) },
+      { label: '标记为未读', icon: ICONS_SVG.eyeSlash, action: 'mark-unread', payload: JSON.stringify({ id: bookId, finished: false }) },
       ...(shelfSubmenu.length > 0
         ? [{ label: '迁移', icon: ICONS_SVG.transfer, action: '', payload: '', submenu: shelfSubmenu }]
         : []),
       { label: '追踪', icon: ICONS_SVG.refresh, action: 'track-book', payload: id },
       { divider: true },
-      { label: '从书架中删除', icon: ICONS_SVG.trash, action: 'remove-from-shelf', payload: JSON.stringify({ shelfId, bookId: id }), danger: true },
+      { label: '从书架中删除', icon: ICONS_SVG.trash, action: 'remove-from-shelf', payload: JSON.stringify({ shelfId, bookId: bookId }), danger: true },
     ];
   }
 
