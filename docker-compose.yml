@@ -1,0 +1,11 @@
+services:
+  webrary:
+    build:
+      context: spring-boot-app
+      dockerfile: Dockerfile
+    container_name: webrary
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./spring-boot-app/data:/app/data
+    restart: unless-stopped
