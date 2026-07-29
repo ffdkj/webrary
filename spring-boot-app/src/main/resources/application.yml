@@ -31,5 +31,3 @@ server:
 
 webrary:
   upload-dir: data/uploads
-  calibre:
-    path: ebook-convert

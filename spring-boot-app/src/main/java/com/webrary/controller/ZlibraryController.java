@@ -4,7 +4,6 @@ import com.webrary.dto.*;
 import com.webrary.model.ShelfBook;
 import com.webrary.repository.BookRepository;
 import com.webrary.service.BookService;
-import com.webrary.service.CalibreConverter;
 import com.webrary.service.DownloadService;
 import com.webrary.service.ZlibraryService;
 import jakarta.servlet.http.HttpSession;
@@ -34,7 +33,6 @@ public class ZlibraryController {
     private final ZlibraryService zlibraryService;
     private final BookService bookService;
     private final BookRepository bookRepository;
-    private final CalibreConverter calibreConverter;
     private final DownloadService downloadService;
 
     @Value("${webrary.upload-dir:./data/uploads}")
@@ -270,17 +268,10 @@ public class ZlibraryController {
     private Path autoConvertIfNeeded(Path savedPath, String extension) {
         if (extension == null) return savedPath;
         String extLower = extension.toLowerCase().replace(".", "");
-        if (!extLower.equals("mobi") && !extLower.equals("azw3")) return savedPath;
-
-        try {
-            log.info("Auto-converting downloaded {} file to EPUB: {}", extLower, savedPath);
-            Path epubPath = calibreConverter.convertToEpub(savedPath);
-            log.info("Auto-conversion complete: {}", epubPath);
-            return epubPath;
-        } catch (Exception e) {
-            log.warn("Auto-conversion to EPUB failed, keeping original: {}", e.getMessage());
-            return savedPath;
+        if (extLower.equals("mobi") || extLower.equals("azw3")) {
+            log.warn("MOBI/AZW3 format downloaded; no EPUB conversion available (Calibre removed)");
         }
+        return savedPath;
     }
 
     /** Server-side download: saves Z-Library book to disk under bookshelf folder, returns saved file info */

@@ -6,7 +6,6 @@ import com.webrary.model.ReadingProgress;
 import com.webrary.model.ShelfBook;
 import com.webrary.repository.BookRepository;
 import com.webrary.service.BookService;
-import com.webrary.service.CalibreConverter;
 import com.webrary.service.EbookParserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -38,7 +37,6 @@ public class BookController {
     private final BookService bookService;
     private final EbookParserService ebookParserService;
     private final BookRepository bookRepository;
-    private final CalibreConverter calibreConverter;
 
     @GetMapping("/shelf/{shelfId}")
     public ApiResponse<List<ShelfBookResponse>> getBooksByShelf(@PathVariable Long shelfId) {
@@ -253,45 +251,6 @@ public class BookController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error("Stream failed: " + e.getMessage()));
-        }
-    }
-
-    /** Convert MOBI/AZW3 book to EPUB using Calibre */
-    @PostMapping("/{bookId}/convert")
-    public ApiResponse<ShelfBookResponse> convertBook(@PathVariable Long bookId) {
-        Book book = bookRepository.findById(bookId)
-                .orElseThrow(() -> new RuntimeException("Book not found: " + bookId));
-
-        String ext = book.getExtension();
-        if (ext == null || (!ext.equalsIgnoreCase("mobi") && !ext.equalsIgnoreCase("azw3"))) {
-            return ApiResponse.error("Book is not in MOBI or AZW3 format (current: " + ext + ")");
-        }
-
-        if (book.getFilePath() == null || !Path.of(book.getFilePath()).toFile().exists()) {
-            return ApiResponse.error("Book file not found on disk");
-        }
-
-        try {
-            Path convertedPath = calibreConverter.convertToEpub(Path.of(book.getFilePath()));
-            book.setFilePath(convertedPath.toString());
-            book.setExtension("epub");
-            bookRepository.save(book);
-
-            ShelfBookResponse response = ShelfBookResponse.builder()
-                    .bookId(book.getId())
-                    .title(book.getTitle())
-                    .author(book.getAuthor())
-                    .coverUrl(book.getCoverUrl())
-                    .extension(book.getExtension())
-                    .filesize(book.getFilesize())
-                    .filePath(book.getFilePath())
-                    .zlibId(book.getZlibId())
-                    .zlibHash(book.getZlibHash())
-                    .build();
-
-            return ApiResponse.success("Converted to EPUB", response);
-        } catch (Exception e) {
-            return ApiResponse.error("Conversion failed: " + e.getMessage());
         }
     }
 

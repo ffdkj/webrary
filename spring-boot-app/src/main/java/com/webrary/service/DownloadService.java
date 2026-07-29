@@ -26,7 +26,6 @@ public class DownloadService {
     private final ZlibraryService zlibraryService;
     private final BookService bookService;
     private final BookRepository bookRepository;
-    private final CalibreConverter calibreConverter;
 
     @Value("${webrary.upload.dir:data/uploads}")
     private String uploadDir;
@@ -136,10 +135,10 @@ public class DownloadService {
         try {
             String lower = ext != null ? ext.toLowerCase() : "";
             if (lower.equals("mobi") || lower.equals("azw3")) {
-                return calibreConverter.convertToEpub(filePath);
+                log.warn("MOBI/AZW3 book downloaded; no EPUB conversion available (Calibre removed)");
             }
         } catch (Exception e) {
-            log.warn("Auto-convert failed for {}: {}", filePath, e.getMessage());
+            log.warn("Format check failed for {}: {}", filePath, e.getMessage());
         }
         return filePath;
     }
