@@ -15,7 +15,7 @@ public interface ShelfBookRepository extends JpaRepository<ShelfBook, Long> {
     int countByShelf(Bookshelf shelf);
     boolean existsByShelfAndBook(Bookshelf shelf, Book book);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM ShelfBook sb WHERE sb.shelf = :shelf AND sb.book = :book")
     void deleteByShelfAndBook(Bookshelf shelf, Book book);
 

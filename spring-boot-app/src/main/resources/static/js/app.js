@@ -517,7 +517,8 @@
              data-finished="${isFinished}"
               data-zlib-id="${escapeHtml(book.zlibId || '')}"
               data-readonline-url="${escapeHtml(book.readOnlineUrl || '')}"
-              data-has-file="${(book.filePath && book.filePath.length > 0) ? 'true' : 'false'}"
+               data-has-file="${(book.filePath && book.filePath.length > 0) ? 'true' : 'false'}"
+               data-filepath="${escapeHtml(book.filePath || '')}"
               draggable="true">
           <div class="cover-wrapper">
             ${coverUrl
@@ -1298,6 +1299,7 @@
       description: card.dataset.description || '',
       zlibId: zlibId,
       zlibHash: card.dataset.hash || '',
+      filePath: card.dataset.filepath || '',
       source: source === 'zlib' ? 'Z-Library' : '本地书库',
     };
     navigateTo('detail', bookData);
@@ -2095,8 +2097,9 @@
     const currentBook = state.detailBook;
     if (!currentBook) return;
     const entityId = currentBook.bookId || currentBook.id;
-    // Check if book has local file — use bookId from detail data
-    if (currentBook.filePath && currentBook.filePath.length > 0) {
+    // Check matching card in books grid for file status
+    const card = document.querySelector(`.book-card[data-book-bookid="${entityId}"]`);
+    if (card && card.dataset.hasFile === 'true') {
       const title = encodeURIComponent(currentBook.title || '');
       const author = encodeURIComponent(currentBook.author || '');
       const ext = encodeURIComponent(currentBook.extension || '');
