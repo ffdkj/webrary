@@ -2,6 +2,7 @@ package com.webrary.service;
 
 import com.webrary.dto.BookAddRequest;
 import com.webrary.dto.EbookMetadata;
+import com.webrary.dto.HistoryEntry;
 import com.webrary.dto.ReadingProgressRequest;
 import com.webrary.dto.ShelfBookResponse;
 import com.webrary.model.Book;
@@ -324,5 +325,25 @@ public class BookService {
         progress.setLastReadAt(LocalDateTime.now());
 
         return readingProgressRepository.save(progress);
+    }
+
+    /**
+     * Get reading history — all books that have been read, ordered by most recent first.
+     */
+    public List<HistoryEntry> getReadingHistory() {
+        List<ReadingProgress> progresses = readingProgressRepository.findByLastReadAtIsNotNullOrderByLastReadAtDesc();
+        List<HistoryEntry> entries = new ArrayList<>();
+        for (ReadingProgress p : progresses) {
+            Book b = p.getBook();
+            entries.add(HistoryEntry.builder()
+                    .bookId(b.getId())
+                    .title(b.getTitle())
+                    .author(b.getAuthor())
+                    .coverUrl(b.getCoverUrl())
+                    .extension(b.getExtension())
+                    .lastReadAt(p.getLastReadAt())
+                    .build());
+        }
+        return entries;
     }
 }

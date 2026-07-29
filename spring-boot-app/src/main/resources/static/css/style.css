@@ -2102,3 +2102,88 @@ select.form-input { cursor: pointer; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ============================================================
+   History Page
+   ============================================================ */
+#historyContainer {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 20px;
+}
+
+.history-date-group {
+  margin-bottom: 28px;
+}
+
+.history-date-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+
+.history-card {
+  display: flex;
+  align-items: center;
+  height: 72px;
+  width: 100%;
+  background: #151827;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: background var(--transition);
+  overflow: hidden;
+}
+.history-card:hover {
+  background: #1b2033;
+}
+
+.history-card-cover {
+  width: 56px;
+  height: 56px;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+  margin-left: 8px;
+  background: var(--panel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.history-card-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.history-card-cover-placeholder {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.history-card-info {
+  flex: 1;
+  min-width: 0;
+  margin-left: 12px;
+  padding-right: 12px;
+}
+
+.history-card-title {
+  font-size: 16px;
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-card-meta {
+  font-size: 13px;
+  color: #7d849b;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

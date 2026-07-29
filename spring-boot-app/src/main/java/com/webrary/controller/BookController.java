@@ -45,6 +45,11 @@ public class BookController {
         return ApiResponse.success(bookService.getBooksByShelf(shelfId));
     }
 
+    @GetMapping("/history")
+    public ApiResponse<List<HistoryEntry>> getReadingHistory() {
+        return ApiResponse.success(bookService.getReadingHistory());
+    }
+
     @PostMapping("/shelf/{shelfId}")
     public ApiResponse<ShelfBookResponse> addBookToShelf(@PathVariable Long shelfId,
                                                           @RequestBody BookAddRequest request) {

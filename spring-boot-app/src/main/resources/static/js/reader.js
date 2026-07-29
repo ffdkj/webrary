@@ -125,6 +125,34 @@
     try {
       localStorage.setItem(key, JSON.stringify(data));
     } catch (e) { /* storage full, ignore */ }
+
+    // Sync to server for history tracking (non-blocking, debounced)
+    syncProgressToServer(location);
+  }
+
+  var _lastSyncTime = 0;
+  function syncProgressToServer(location) {
+    var now = Date.now();
+    if (now - _lastSyncTime < 3000) return; // debounce 3s
+    _lastSyncTime = now;
+
+    var cp = 0, tp = 0, finished = false;
+    if (location.hasOwnProperty('page')) {
+      cp = location.page || 0;
+      tp = location.totalPages || pdfTotalPages || 0;
+      finished = tp > 0 && cp >= tp;
+    } else if (location.hasOwnProperty('percentage')) {
+      cp = Math.round(location.percentage || 0);
+      tp = 100;
+    } else {
+      return; // TXT scroll — skip server sync
+    }
+
+    fetch('/api/books/' + PARAM_BOOK_ID + '/progress', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPage: cp, totalPages: tp, finished: finished })
+    }).catch(function () { /* ignore */ });
   }
 
   function loadProgress() {

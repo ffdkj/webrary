@@ -630,6 +630,8 @@
       await loadBrowseBooks();
     } else if (state.currentPage === 'downloads') {
       await loadDownloadTasks();
+    } else if (state.currentPage === 'history') {
+      await renderHistoryPage();
     } else if (state.currentPage === 'detail' || state.currentPage === 'reader') {
       if (state.detailBook) await renderDetailPage();
     } else {
@@ -1485,10 +1487,12 @@
       case 'downloads':
         navigateTo('downloads');
         break;
+      case 'history':
+        navigateTo('history');
+        break;
       default:
-        // Other pages (history, downloads, settings, about) — placeholder
+        // Other pages (settings, about) — placeholder
         showToast('该功能正在开发中', 'info');
-        // Re-highlight shelf
         $$('.nav-item').forEach((n) => n.classList.remove('active'));
         const shelfNav = document.querySelector('.nav-item[data-page="shelf"]');
         if (shelfNav) shelfNav.classList.add('active');
@@ -1518,19 +1522,20 @@
     const isShelf = page === 'shelf';
     const isBrowse = page === 'browse';
     const isDownloads = page === 'downloads';
+    const isHistory = page === 'history';
     const isDetail = page === 'detail' || page === 'reader';
 
     // Tab bar visible only in shelf mode
     dom.tabBarWrapper.classList.toggle('hidden', !isShelf);
 
-    // Books container visible in shelf, browse, or downloads mode
-    dom.booksContainer.style.display = (isShelf || isBrowse || isDownloads) ? '' : 'none';
+    // Books container visible in shelf, browse, downloads, or history mode
+    dom.booksContainer.style.display = (isShelf || isBrowse || isDownloads || isHistory) ? '' : 'none';
 
     // Detail page visible in detail mode
     dom.detailPage.style.display = isDetail ? '' : 'none';
 
-    // Header back button: visible in detail/browse
-    dom.headerBackBtn.style.display = (isDetail || isBrowse) ? '' : 'none';
+    // Header back button: visible in detail/browse/history
+    dom.headerBackBtn.style.display = (isDetail || isBrowse || isHistory) ? '' : 'none';
 
     // Header actions: full set in shelf, partial in browse, hidden in detail
     if (isDetail) {
@@ -1543,7 +1548,7 @@
       dom.uploadBtn.style.display = 'none';
       dom.refreshBtn.style.display = '';
       dom.totalBookCount.style.display = 'none';
-    } else if (isDownloads) {
+    } else if (isDownloads || isHistory) {
       dom.searchBtn.style.display = 'none';
       dom.uploadBtn.style.display = 'none';
       dom.refreshBtn.style.display = '';
@@ -1557,6 +1562,12 @@
     }
 
     dom.mainContent.style.background = isDetail ? '#080808' : '';
+
+    // Hide history container when navigating away from history
+    if (page !== 'history') {
+      var hc = document.getElementById('historyContainer');
+      if (hc) hc.style.display = 'none';
+    }
 
     switch (page) {
       case 'shelf':
@@ -1584,6 +1595,9 @@
         stopDownloadPolling();
         loadDownloadTasks();
         startDownloadPolling();
+        break;
+      case 'history':
+        renderHistoryPage();
         break;
       case 'detail':
         if (data) {
@@ -1617,13 +1631,16 @@
       case 'downloads':
         dom.headerTitle.textContent = '下载';
         break;
+      case 'history':
+        dom.headerTitle.textContent = '历史';
+        break;
     }
   }
 
   function goBack() {
     if (state.currentPage === 'detail' || state.currentPage === 'reader') {
       navigateTo(state.previousPage);
-    } else if (state.currentPage === 'browse') {
+    } else if (state.currentPage === 'browse' || state.currentPage === 'history') {
       navigateTo('shelf');
     }
   }
@@ -2239,7 +2256,7 @@
         hideContextMenu();
       } else if (anyModalOpen) {
         hideAllModals();
-      } else if (state.currentPage === 'detail' || state.currentPage === 'browse') {
+      } else if (state.currentPage === 'detail' || state.currentPage === 'browse' || state.currentPage === 'history') {
         goBack();
       }
     }
@@ -2356,6 +2373,97 @@
     if (state.downloadPollTimer) {
       clearInterval(state.downloadPollTimer);
       state.downloadPollTimer = null;
+    }
+  }
+
+  async function renderHistoryPage() {
+    // Hide shelf/browse grid; use a dedicated container inside booksContainer
+    dom.booksGrid.style.display = 'none';
+    dom.emptyState.style.display = 'none';
+
+    let hc = document.getElementById('historyContainer');
+    if (!hc) {
+      hc = document.createElement('div');
+      hc.id = 'historyContainer';
+      dom.booksContainer.appendChild(hc);
+    }
+    hc.style.display = '';
+    hc.innerHTML = '<div class="loading-state" style="display:flex;"><div class="spinner"></div><p>加载中...</p></div>';
+
+    try {
+      const resp = await api('/books/history');
+      const items = (resp && resp.success && resp.data) ? resp.data : [];
+
+      if (items.length === 0) {
+        hc.innerHTML = `
+          <div class="empty-state" style="display:flex;">
+            <div class="empty-state-kaomoji">(&#180;&middot;&omega;&middot;&#180;)</div>
+            <p>暂无阅读记录</p>
+            <p class="text-muted">阅读书籍后，历史会在此显示</p>
+          </div>`;
+        return;
+      }
+
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const yesterdayStart = new Date(todayStart.getTime() - 86400000);
+
+      const groups = { today: [], yesterday: [], earlier: [] };
+      items.forEach(function (it) {
+        if (!it.lastReadAt) return;
+        var d = new Date(it.lastReadAt);
+        var dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        if (dDay.getTime() >= todayStart.getTime()) {
+          groups.today.push(it);
+        } else if (dDay.getTime() >= yesterdayStart.getTime()) {
+          groups.yesterday.push(it);
+        } else {
+          groups.earlier.push(it);
+        }
+      });
+
+      function timeFmt(iso) {
+        var d = new Date(iso);
+        return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      }
+
+      function renderCard(item) {
+        var ext = item.extension || '';
+        var cover = item.coverUrl || '';
+        return '<div class="history-card" data-book-id="' + item.bookId + '" data-ext="' + escapeHtml(ext)
+          + '" data-title="' + escapeHtml(item.title || '') + '" data-author="' + escapeHtml(item.author || '') + '">'
+          + '<div class="history-card-cover">'
+          + (cover
+            ? '<img src="' + escapeHtml(cover) + '" alt="" loading="lazy">'
+            : '<div class="history-card-cover-placeholder">' + (ext.slice(0, 2).toUpperCase() || '?') + '</div>')
+          + '</div>'
+          + '<div class="history-card-info">'
+          + '<div class="history-card-title">' + escapeHtml(item.title || '未命名') + '</div>'
+          + '<div class="history-card-meta">' + escapeHtml(item.author || '') + ' &middot; ' + timeFmt(item.lastReadAt) + '</div>'
+          + '</div></div>';
+      }
+
+      var html = '';
+      if (groups.today.length) { html += '<div class="history-date-group"><h3 class="history-date-title">今天</h3>' + groups.today.map(renderCard).join('') + '</div>'; }
+      if (groups.yesterday.length) { html += '<div class="history-date-group"><h3 class="history-date-title">昨天</h3>' + groups.yesterday.map(renderCard).join('') + '</div>'; }
+      if (groups.earlier.length) { html += '<div class="history-date-group"><h3 class="history-date-title">更早</h3>' + groups.earlier.map(renderCard).join('') + '</div>'; }
+
+      hc.innerHTML = html;
+
+      hc.querySelectorAll('.history-card').forEach(function (card) {
+        card.addEventListener('click', function () {
+          var bookId = card.dataset.bookId;
+          var ext = card.dataset.ext;
+          var title = card.dataset.title;
+          var author = card.dataset.author;
+          window.location.href = '/reader.html?bookId=' + bookId
+            + '&title=' + encodeURIComponent(title)
+            + '&author=' + encodeURIComponent(author)
+            + '&ext=' + encodeURIComponent(ext);
+        });
+      });
+    } catch (e) {
+      hc.innerHTML = '<div class="empty-state" style="display:flex;"><p>加载失败</p></div>';
     }
   }
 
