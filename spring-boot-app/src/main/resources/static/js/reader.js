@@ -478,6 +478,7 @@
 
         // Progress tracking
         rendition.on('relocated', function (location) {
+          bindEpubTapListeners();
           var loc = location.start;
           saveProgress({
             cfi: loc.cfi,
@@ -493,6 +494,7 @@
         // Display first, then load TOC (navigation may need the book fully opened)
         return rendition.display().then(function () {
           hideLoading();
+          bindEpubTapListeners();
 
           // Load TOC after display
           book.loaded.navigation.then(function (nav) {
@@ -892,6 +894,58 @@
       });
   }
 
+  function isInteractiveElement(el) {
+    if (!el || !el.closest) return false;
+    return !!el.closest(
+      'a[href], button, input, textarea, select, [contenteditable="true"], [role="link"]'
+    );
+  }
+
+  function pageDirectionFromClick(x, width) {
+    if (!width || x < 0) return null;
+    var ratio = x / width;
+    if (ratio < 0.35) return true;   // left edge: previous page
+    if (ratio > 0.65) return false;  // right edge: next page
+    return null;
+  }
+
+  function doPage(isPrev) {
+    if (currentFormat === 'pdf') {
+      if (isPrev) pdfPrevPage(); else pdfNextPage();
+    } else if (currentFormat === 'epub' && viewer && viewer.rendition) {
+      if (isPrev) viewer.rendition.prev(); else viewer.rendition.next();
+    }
+  }
+
+  function handleReaderAreaClick(e) {
+    if (currentFormat === 'epub' || e.defaultPrevented || isInteractiveElement(e.target)) return;
+    var rect = dom.readerArea.getBoundingClientRect();
+    var dir = pageDirectionFromClick(e.clientX - rect.left, rect.width);
+    if (dir !== null) doPage(dir);
+  }
+
+  function handleEpubClick(e) {
+    if (e.defaultPrevented || isInteractiveElement(e.target)) return;
+    var rect = dom.readerArea.getBoundingClientRect();
+    var topWin = window.top || window;
+    var viewportLeft = topWin.screenX + ((topWin.outerWidth || 0) - (topWin.innerWidth || 0));
+    if (typeof e.screenX !== 'number') return;
+    var x = e.screenX - viewportLeft - rect.left;
+    var dir = pageDirectionFromClick(x, rect.width);
+    if (dir !== null) doPage(dir);
+  }
+
+  function bindEpubTapListeners() {
+    if (!viewer || !viewer.rendition) return;
+    var contents = viewer.rendition.getContents();
+    (contents || []).forEach(function (content) {
+      if (content && content.document && !content.document.__webraryTapBound) {
+        content.document.__webraryTapBound = true;
+        content.document.addEventListener('click', handleEpubClick, true);
+      }
+    });
+  }
+
   /* ================================================================
      Event Bindings — 事件绑定
      ================================================================ */
@@ -974,54 +1028,8 @@
       else if (currentFormat === 'epub' && viewer && viewer.rendition) viewer.rendition.next();
     });
 
-    // 触摸/点击区域翻页（左右两侧点击翻页）
-    (function () {
-      var tapStartX = 0, tapStartY = 0, tapStartTime = 0;
-      var suppressMouse = false;
-
-      var zoneL = document.createElement('div');
-      zoneL.className = 'reader-tap-zone reader-tap-left';
-      var zoneR = document.createElement('div');
-      zoneR.className = 'reader-tap-zone reader-tap-right';
-      dom.readerArea.appendChild(zoneL);
-      dom.readerArea.appendChild(zoneR);
-
-      function doPage(isPrev) {
-        if (currentFormat === 'pdf') {
-          if (isPrev) pdfPrevPage(); else pdfNextPage();
-        } else if (currentFormat === 'epub' && viewer && viewer.rendition) {
-          if (isPrev) viewer.rendition.prev(); else viewer.rendition.next();
-        }
-      }
-
-      function bindZone(el, isPrev) {
-        // Mouse
-        el.addEventListener('mousedown', function (e) {
-          if (suppressMouse) return;
-          tapStartX = e.clientX; tapStartY = e.clientY; tapStartTime = Date.now();
-        });
-        el.addEventListener('mouseup', function (e) {
-          if (suppressMouse) return;
-          var dt = Date.now() - tapStartTime;
-          var dx = Math.abs(e.clientX - tapStartX);
-          var dy = Math.abs(e.clientY - tapStartY);
-          if (dt < 300 && dx < 10 && dy < 10) doPage(isPrev);
-        });
-        // Touch
-        el.addEventListener('touchstart', function (e) {
-          var t = e.touches[0];
-          tapStartX = t.clientX; tapStartY = t.clientY; tapStartTime = Date.now();
-        }, { passive: true });
-        el.addEventListener('touchend', function () {
-          if (Date.now() - tapStartTime < 300) doPage(isPrev);
-          // Suppress synthesized mouse events after touch
-          suppressMouse = true;
-          setTimeout(function () { suppressMouse = false; }, 400);
-        });
-      }
-      bindZone(zoneL, true);
-      bindZone(zoneR, false);
-    })();
+    // 点击左右两侧翻页；中间区域和链接/按钮不拦截点击
+    dom.readerArea.addEventListener('click', handleReaderAreaClick);
 
     // 键盘快捷键：左右箭头翻页，Esc关闭面板
     document.addEventListener('keydown', function (e) {

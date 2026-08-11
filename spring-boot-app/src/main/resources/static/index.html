@@ -202,6 +202,9 @@
          <div class="books-grid" id="booksGrid">
           <!-- 动态生成 -->
         </div>
+        <div class="browse-load-more" id="browseLoadMore" style="display:none;">
+          <div class="spinner spinner-sm"></div>
+        </div>
 
         <!-- 空状态：没有书籍时显示 -->
         <div class="empty-state" id="emptyState" style="display:none;">
@@ -373,8 +376,9 @@
                 <select id="filterOrder">
                   <option value="">最佳匹配</option>
                   <option value="popular">最受欢迎</option>
-                  <option value="newest">最新</option>
-                  <option value="best-match">最佳匹配</option>
+                  <option value="year">最新（按年份）</option>
+                  <option value="title">标题 A-Z</option>
+                  <option value="filesize">文件大小</option>
                 </select>
               </div>
             </div>

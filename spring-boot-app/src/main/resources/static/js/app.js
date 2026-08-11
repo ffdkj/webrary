@@ -44,6 +44,11 @@
     // 浏览页模式
     browseMode: 'popular',  // 'popular' | 'search'
     searchQuery: '',                 // 搜索关键词
+    searchParams: null,              // 当前搜索筛选参数（不含 page/limit）
+    searchPage: 1,                   // 当前已加载的搜索页码
+    searchLimit: 20,                 // 每页搜索结果数量
+    searchHasMore: false,            // 是否还有下一页
+    searchLoadingMore: false,        // 是否正在加载下一页
   };
 
   /* ================================================================
@@ -60,6 +65,7 @@
     tabBar: $('#tabBar'),
     addShelfBtn: $('#addShelfBtn'),
     booksGrid: $('#booksGrid'),
+    browseLoadMore: $('#browseLoadMore'),
     totalBookCount: $('#totalBookCount'),
     emptyState: $('#emptyState'),
     loadingState: $('#loadingState'),
@@ -1130,7 +1136,7 @@
       message: query,
       yearFrom: $('#filterYearFrom').value || undefined,
       yearTo: $('#filterYearTo').value || undefined,
-      languages: $('#filterLanguage').value || undefined,
+      languages: $('#filterLanguage').value ? [$('#filterLanguage').value] : undefined,
       extensions: $('#filterExtension').value ? [$('#filterExtension').value] : undefined,
       order: $('#filterOrder').value || undefined,
       page: 1,
@@ -1139,19 +1145,82 @@
 
     Object.keys(params).forEach((k) => params[k] === undefined && delete params[k]);
 
+    state.searchParams = { ...params };
+    delete state.searchParams.page;
+    delete state.searchParams.limit;
+    state.searchPage = 1;
+    state.searchLimit = params.limit || 20;
+    state.searchHasMore = true;
+    state.searchLoadingMore = false;
+    showBrowseLoadMore(false);
+
     try {
       const resp = await zlibSearch(params);
       const results = resp?.data?.books || resp?.books || resp?.data || resp || [];
       state.browseBooks = Array.isArray(results) ? results : [];
       state.browseMode = 'search';
       state.searchQuery = query;
+      const pagination = resp?.data?.pagination;
+      state.searchHasMore = pagination
+        ? Boolean(pagination.next)
+        : state.browseBooks.length >= state.searchLimit;
       hideModal('search');
       navigateTo('browse');
+      if (dom.booksContainer) dom.booksContainer.scrollTop = 0;
     } catch (err) {
       showToast('搜索失败: ' + err.message, 'error');
       hideModal('search');
     }
     loadingEl.style.display = 'none';
+  }
+
+  // 滚动到底部时自动加载下一页搜索结果
+  async function loadMoreSearchResults() {
+    if (state.browseMode !== 'search' || !state.searchHasMore || state.searchLoadingMore) return;
+    state.searchLoadingMore = true;
+    showBrowseLoadMore(true);
+    const nextPage = state.searchPage + 1;
+    const params = {
+      ...(state.searchParams || {}),
+      page: nextPage,
+      limit: state.searchLimit,
+    };
+    try {
+      const resp = await zlibSearch(params);
+      const results = resp?.data?.books || resp?.books || resp?.data || [];
+      if (!Array.isArray(results) || results.length === 0) {
+        state.searchHasMore = false;
+        return;
+      }
+      const seen = new Set(state.browseBooks.map((b) => b.id));
+      const fresh = results.filter((b) => !seen.has(b.id));
+      state.browseBooks = state.browseBooks.concat(fresh);
+      state.searchPage = nextPage;
+      const pagination = resp?.data?.pagination;
+      state.searchHasMore = pagination
+        ? Boolean(pagination.next)
+        : fresh.length >= state.searchLimit;
+      dom.booksGrid.insertAdjacentHTML('beforeend', fresh.map(bookCardHtml).join(''));
+    } catch (err) {
+      state.searchHasMore = false;
+    } finally {
+      state.searchLoadingMore = false;
+      showBrowseLoadMore(false);
+    }
+  }
+
+  function showBrowseLoadMore(show) {
+    if (dom.browseLoadMore) {
+      dom.browseLoadMore.style.display = show ? 'flex' : 'none';
+    }
+  }
+
+  function handleBrowseScroll() {
+    if (state.currentPage !== 'browse' || state.browseMode !== 'search') return;
+    const el = dom.booksContainer;
+    if (el && el.scrollTop + el.clientHeight >= el.scrollHeight - 400) {
+      loadMoreSearchResults();
+    }
   }
 
   /* -- Old search list renderer removed; search now uses browse book-card grid -- */
@@ -1814,9 +1883,13 @@
     dom.booksGrid.style.display = 'grid';
 
     dom.booksGrid.innerHTML = books
-      .map((book) => {
-        const coverUrl = book.cover || book.coverUrl || '';
-        return `
+      .map(bookCardHtml)
+      .join('');
+  }
+
+  function bookCardHtml(book) {
+    const coverUrl = book.cover || book.coverUrl || '';
+    return `
         <div class="book-card"
              data-book-id="${escapeHtml(book.id || '')}"
              data-book-bookid="${escapeHtml(book.id || '')}"
@@ -1839,8 +1912,6 @@
           <div class="book-title">${escapeHtml(book.title || '未命名')}</div>
           ${book.author ? `<div class="book-author">${escapeHtml(book.author)}</div>` : ''}
         </div>`;
-      })
-      .join('');
   }
 
   /* ================================================================
@@ -2638,6 +2709,7 @@
     // 书籍网格交互
     dom.booksGrid.addEventListener('click', handleBookClick);
     dom.booksGrid.addEventListener('contextmenu', handleBookRightClick);
+    dom.booksContainer.addEventListener('scroll', handleBrowseScroll);
     dom.booksGrid.addEventListener('click', (e) => {
       if (e.target.closest('.cover-options-btn')) handleBookOptionsBtn(e);
       if (e.target.closest('.cover-read-btn')) {

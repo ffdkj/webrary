@@ -1,0 +1,63 @@
+@startuml Z-Library搜索下载流程
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Microsoft YaHei
+
+actor 用户 as user
+participant "前端\nindex.html" as frontend
+participant "ZlibraryController\n/api/zlibrary" as ctrl
+participant "ZlibraryService" as svc
+participant "DownloadService" as dl
+participant "ZlibraryApiClient\n(OkHttp)" as client
+participant "Z-Library\n服务器" as zlib
+database "SQLite" as db
+
+== 1. Z-Library登录 ==
+user -> frontend : 输入邮箱密码
+frontend -> ctrl : POST /api/zlibrary/login
+ctrl -> svc : login(email, password, domain, proxy)
+svc -> client : POST /eapi/user/login
+client -> zlib : HTTPS请求
+zlib --> client : remix_userid, remix_userkey
+client --> svc : 登录成功
+svc -> db : 保存凭据到 user_zlibrary
+svc --> ctrl : 登录成功
+ctrl --> frontend : {success: true}
+frontend --> user : 显示Z-Library已连接
+
+== 2. 搜索图书 ==
+user -> frontend : 输入关键词 + 筛选条件
+frontend -> ctrl : POST /api/zlibrary/search
+ctrl -> svc : search(query, filters...)
+svc -> client : POST /eapi/book/search
+client -> zlib : HTTPS请求
+zlib --> client : 搜索结果JSON
+client --> svc : 搜索结果列表
+svc --> ctrl : ZlibrarySearchResponse
+ctrl --> frontend : {success, data: books[]}
+frontend --> user : 展示搜索结果列表
+
+== 3. 下载图书 ==
+user -> frontend : 点击下载
+frontend -> ctrl : POST /api/zlibrary/download-save
+ctrl -> dl : startDownload(bookId, hash, shelfName)
+dl -> svc : getDownloadLink(id, hash)
+svc -> client : GET /eapi/book/{id}/{hash}/file
+client -> zlib : HTTPS请求
+zlib --> client : 下载链接
+client --> svc : DownloadLinkInfo
+svc --> dl : 下载链接
+
+dl -> client : 下载文件(带进度回调)
+client -> zlib : 请求文件内容
+zlib --> client : 文件字节流
+dl -> db : 保存文件到 uploads/
+dl -> epub_svc : 解析元数据(标题/作者/封面/TOC)
+dl -> db : 创建/更新 Book 记录
+dl -> db : 创建 ShelfBook 关联
+dl -> db : 初始化 ReadingProgress
+dl --> ctrl : DownloadTask COMPLETED
+ctrl --> frontend : 下载完成
+frontend --> user : 图书已添加到书架
+
+@enduml

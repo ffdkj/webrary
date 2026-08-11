@@ -1,0 +1,63 @@
+@startuml 本地上传与在线阅读流程
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Microsoft YaHei
+
+actor 用户 as user
+participant "前端\nindex.html" as frontend
+participant "BookController\n/api/books" as ctrl
+participant "BookService" as svc
+participant "EbookParserService" as parser
+participant "reader.html\n在线阅读器" as reader
+database "SQLite + 文件系统" as db
+
+== 1. 上传本地图书 ==
+user -> frontend : 拖拽/选择文件\n(EPUB/PDF/TXT/MOBI/AZW3)
+frontend -> ctrl : POST /api/books/upload\n(multipart/form-data)
+ctrl -> svc : uploadBook(file)
+svc -> db : 保存文件到 uploads/UUID.ext
+svc -> parser : 解析电子书
+
+alt EPUB
+  parser -> parser : epublib 提取元数据\n(标题/作者/封面/NCX目录)
+else PDF
+  parser -> parser : PDFBox 提取信息\n+ 首页渲染为封面JPEG
+else TXT
+  parser -> parser : 正则检测章节\n估算页数(字/2000)
+else MOBI/AZW3
+  parser -> parser : 记录日志(不支持转换)
+end
+
+parser --> svc : 元数据(标题/作者/封面/TOC/页数)
+svc -> db : 创建 Book 记录
+svc -> db : 初始化 ReadingProgress
+svc --> ctrl : Book 对象
+ctrl --> frontend : {success, data: book}
+frontend --> user : 显示上传成功
+
+== 2. 在线阅读 ==
+user -> frontend : 点击图书封面
+frontend -> reader : 跳转 reader.html?book={id}
+reader -> ctrl : GET /api/books/{id}/stream
+ctrl -> svc : 读取文件字节
+svc -> db : 读取文件路径
+svc --> ctrl : InputStream
+ctrl --> reader : 文件内容(Inline)
+
+alt EPUB
+  reader -> reader : epub.js 渲染
+else PDF
+  reader -> reader : GET /api/books/{id}/pdf/page/{n}
+  reader -> reader : pdf.js 渲染
+else TXT
+  reader -> reader : 直接显示文本\n章节导航
+end
+
+== 3. 阅读进度同步 ==
+reader -> ctrl : PUT /api/books/{id}/progress\n{currentPage, totalPages, finished}
+ctrl -> svc : updateReadingProgress(bookId, progress)
+svc -> db : UPDATE reading_progress
+svc --> ctrl : 更新成功
+ctrl --> reader : {success: true}
+
+@enduml

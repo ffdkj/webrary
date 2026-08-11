@@ -1,0 +1,7 @@
+__pycache__
+*.pyc
+.venv
+venv
+.env
+data
+../spring-boot-app/data

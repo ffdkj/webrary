@@ -1,0 +1,87 @@
+@startuml 数据库ER图
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Microsoft YaHei
+skinparam roundCorner 10
+
+entity "users\n用户表" as users {
+  * id : BIGINT <<PK>>
+  --
+  * email : VARCHAR(255) <<UNIQUE>>
+  * password_hash : VARCHAR(255)
+  * created_at : TIMESTAMP
+}
+
+entity "user_zlibrary\nZ-Library绑定" as user_zlibrary {
+  * id : BIGINT <<PK>>
+  --
+  * user_id : BIGINT <<FK, UNIQUE>>
+  zlibrary_email : VARCHAR(255)
+  zlibrary_password : VARCHAR(255)
+  remix_user_id : VARCHAR(255)
+  remix_user_key : VARCHAR(255)
+  domain : VARCHAR(255) <<default: fuckfbi.ru>>
+  proxy_host : VARCHAR(255)
+  proxy_port : INTEGER
+  updated_at : TIMESTAMP
+}
+
+entity "books\n图书表" as books {
+  * id : BIGINT <<PK>>
+  --
+  zlib_id : BIGINT
+  zlib_hash : VARCHAR(255)
+  * title : VARCHAR(255)
+  author : VARCHAR(255)
+  cover_url : VARCHAR(2048)
+  extension : VARCHAR(20)
+  filesize : BIGINT
+  file_path : VARCHAR(1024)
+  description : TEXT
+  uploaded : BOOLEAN
+  created_at : TIMESTAMP
+}
+
+entity "bookshelves\n书架表" as bookshelves {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(255)
+  sort_order : INTEGER
+  created_at : TIMESTAMP
+}
+
+entity "shelf_books\n书架-图书关联" as shelf_books {
+  * id : BIGINT <<PK>>
+  --
+  * shelf_id : BIGINT <<FK>>
+  * book_id : BIGINT <<FK>>
+  added_at : TIMESTAMP
+  --
+  <<UNIQUE(shelf_id, book_id)>>
+}
+
+entity "reading_progress\n阅读进度" as reading_progress {
+  * id : BIGINT <<PK>>
+  --
+  * book_id : BIGINT <<FK, UNIQUE>>
+  current_page : INTEGER
+  total_pages : INTEGER
+  finished : BOOLEAN
+  last_read_at : TIMESTAMP
+}
+
+entity "zlibrary_config\nZ-Library配置" as zlibrary_config {
+  * id : BIGINT <<PK>>
+  --
+  * config_key : VARCHAR(255) <<UNIQUE>>
+  config_value : TEXT
+  updated_at : TIMESTAMP
+}
+
+' 关系
+users ||--o| user_zlibrary : "1:1\n绑定"
+books ||--o| reading_progress : "1:1\n记录进度"
+books ||--o{ shelf_books : "1:N\n包含于"
+bookshelves ||--o{ shelf_books : "1:N\n包含"
+
+@enduml

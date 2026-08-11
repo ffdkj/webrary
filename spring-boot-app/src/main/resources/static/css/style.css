@@ -435,6 +435,12 @@ img { display: block; max-width: 100%; }
   gap: 24px;
 }
 
+.browse-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+}
+
 /* ---- Book Card ---- */
 .book-card {
   cursor: pointer;
