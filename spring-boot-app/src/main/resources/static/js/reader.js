@@ -459,6 +459,8 @@
   }
 
   function createTxtHighlight(info, color) {
+    var txtReader = document.getElementById('txtReader');
+    var prevScroll = txtReader ? txtReader.scrollTop : 0;
     fetch(HIGHLIGHTS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -475,7 +477,9 @@
         if (resp && resp.success && resp.data) {
           highlights.unshift(resp.data);
           renderHighlightsList();
-          renderTxtPage(txtPageNum);
+          renderTxtPage(txtPageNum).then(function () {
+            if (txtReader) txtReader.scrollTop = prevScroll;
+          });
         }
       })
       .catch(function () { /* ignore */ });
