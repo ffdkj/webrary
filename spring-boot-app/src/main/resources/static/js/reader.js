@@ -397,6 +397,9 @@
           + dot
           + '<span class="highlight-quote">' + escapeHtml(truncateText(hl.quote, 60)) + '</span>'
           + '<span class="highlight-loc">' + loc + '</span>'
+          + '<span class="highlight-delete" data-index="' + i + '" title="删除摘抄">'
+          + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">'
+          + '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></span>'
           + '</button>';
       }).join('');
     }
@@ -682,6 +685,25 @@
       var mark = document.querySelector('mark[data-highlight-id="' + hl.id + '"]');
       if (mark) mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
+  }
+
+  function deleteHighlight(hl) {
+    fetch(HIGHLIGHTS_URL + '/' + hl.id, { method: 'DELETE' })
+      .then(function (r) { return r.json(); })
+      .then(function (resp) {
+        if (resp && resp.success) {
+          highlights = highlights.filter(function (h) { return h.id !== hl.id; });
+          renderHighlightsList();
+          if (currentFormat === 'epub' && viewer && viewer.rendition && hl.cfiRange) {
+            try {
+              viewer.rendition.annotations.remove(hl.cfiRange, 'highlight');
+            } catch (e) { /* ignore */ }
+          } else if (currentFormat === 'txt') {
+            renderTxtPage(txtPageNum);
+          }
+        }
+      })
+      .catch(function () { /* ignore */ });
   }
 
   /* ================================================================
@@ -1381,6 +1403,13 @@
 
     // 摘抄项点击→跳转
     dom.highlightsList.addEventListener('click', function (e) {
+      var del = e.target.closest('.highlight-delete');
+      if (del) {
+        var delIdx = parseInt(del.dataset.index, 10);
+        var delHl = highlights[delIdx];
+        if (delHl) deleteHighlight(delHl);
+        return;
+      }
       var item = e.target.closest('.highlight-item');
       if (!item) return;
       var idx = parseInt(item.dataset.index, 10);
