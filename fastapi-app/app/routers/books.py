@@ -263,13 +263,21 @@ def upload_book(
         return fail(f"Shelf not found: {shelf_id}")
     original_filename = file.filename or "book"
     ext = original_filename.rsplit(".", 1)[-1].lower() if "." in original_filename else ""
-    content = file.file.read()
-    if len(content) > MAX_UPLOAD_BYTES:
-        return fail(f"File exceeds maximum size of {MAX_UPLOAD_BYTES} bytes")
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     stored_name = f"{uuid.uuid4()}.{ext}" if ext else str(uuid.uuid4())
     stored_path = UPLOAD_DIR / stored_name
-    stored_path.write_bytes(content)
+    size = 0
+    with stored_path.open("wb") as out:
+        while True:
+            chunk = file.file.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_UPLOAD_BYTES:
+                out.close()
+                stored_path.unlink(missing_ok=True)
+                return fail(f"File exceeds maximum size of {MAX_UPLOAD_BYTES} bytes")
+            out.write(chunk)
 
     if ext in ("mobi", "azw3"):
         stored_path, ext = ensure_epub_conversion(stored_path, ext)
