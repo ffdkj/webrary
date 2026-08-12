@@ -17,6 +17,9 @@ from ..services.ebook import (
     parse_file,
     pdf_info,
     render_pdf_page,
+    txt_info,
+    txt_page,
+    txt_text_utf8,
 )
 
 
@@ -392,9 +395,15 @@ def read_book(book_id: int):
     path = Path(book["file_path"])
     if not path.exists():
         return JSONResponse(status_code=404, content=fail("File not found on disk"))
+    extension = (book["extension"] or "").lower()
+    if extension == "txt":
+        return Response(
+            content=txt_text_utf8(path),
+            media_type="text/plain; charset=utf-8",
+        )
     return Response(
         content=path.read_bytes(),
-        media_type=mime_for_extension(book["extension"]),
+        media_type=mime_for_extension(extension),
     )
 
 
@@ -408,13 +417,54 @@ def stream_book(book_id: int):
     path = Path(book["file_path"])
     if not path.exists():
         return JSONResponse(status_code=404, content=fail("File not found on disk"))
+    extension = (book["extension"] or "").lower()
+    if extension == "txt":
+        return Response(
+            content=txt_text_utf8(path),
+            media_type="text/plain; charset=utf-8",
+            headers={
+                "Content-Disposition": f'inline; filename="{path.name}"'
+            },
+        )
     return Response(
         content=path.read_bytes(),
-        media_type=mime_for_extension(book["extension"]),
+        media_type=mime_for_extension(extension),
         headers={
             "Content-Disposition": f'inline; filename="{path.name}"'
         },
     )
+
+
+@router.get("/{book_id}/txt/info")
+def get_txt_info(book_id: int):
+    book = fetch_one("SELECT * FROM books WHERE id = ?", (book_id,))
+    if book is None:
+        return fail(f"Book not found: {book_id}")
+    if (book["extension"] or "").lower() != "txt":
+        return fail("Not a TXT file")
+    if not book["file_path"] or not Path(book["file_path"]).exists():
+        return fail("File not found")
+    try:
+        return ok(txt_info(Path(book["file_path"])))
+    except Exception as exc:
+        return fail(f"Failed: {exc}")
+
+
+@router.get("/{book_id}/txt/page/{page_number}")
+def get_txt_page(book_id: int, page_number: int):
+    book = fetch_one("SELECT * FROM books WHERE id = ?", (book_id,))
+    if book is None:
+        return JSONResponse(status_code=404, content=fail("Book not found"))
+    if (book["extension"] or "").lower() != "txt":
+        return fail("Not a TXT file")
+    if not book["file_path"] or not Path(book["file_path"]).exists():
+        return fail("File not found")
+    try:
+        return ok(txt_page(Path(book["file_path"]), page_number))
+    except ValueError:
+        return JSONResponse(status_code=404, content=fail("Page out of range"))
+    except Exception as exc:
+        return JSONResponse(status_code=500, content=fail(f"Read failed: {exc}"))
 
 
 @router.get("/{book_id}/pdf/info")

@@ -1,5 +1,7 @@
 """EPUB/PDF/TXT metadata, TOC and page rendering helpers."""
 
+import codecs
+import json
 import math
 import re
 import shutil
@@ -18,7 +20,12 @@ from ..config import UPLOAD_DIR
 
 
 CHARS_PER_PAGE = 2000
-TXT_CHAPTER_RE = re.compile(r"^第[一二三四五六七八九十百零0-9]+[章回节卷篇部].*")
+TXT_CHAPTER_RE = re.compile(
+    r"^(?:第[一二三四五六七八九十百千万零〇0-9]+[章回节卷篇部]"
+    r"|Chapter\s+\d+|CHAPTER\s+\d+"
+    r"|序言|前言|楔子|尾声|后记|附录).*"
+)
+TXT_INDEX_SUFFIX = ".webrary-txt-index.json"
 
 
 def _meta_values(book: Any, name: str) -> List[str]:
@@ -219,29 +226,162 @@ def _parse_pdf(path: Path) -> Dict[str, Any]:
         doc.close()
 
 
-def _parse_txt(path: Path) -> Dict[str, Any]:
-    content = path.read_text(encoding="utf-8", errors="ignore")
+def _decode_txt_bytes(data: bytes) -> tuple:
+    """Decode TXT bytes, preferring UTF-8 and detecting common CJK encodings."""
+    if data.startswith(codecs.BOM_UTF8):
+        return data.decode("utf-8-sig"), "utf-8"
+    if data.startswith(codecs.BOM_UTF16_LE):
+        return data.decode("utf-16"), "utf-16-le"
+    if data.startswith(codecs.BOM_UTF16_BE):
+        return data.decode("utf-16"), "utf-16-be"
+    for encoding in ("utf-8", "utf-16"):
+        try:
+            return data.decode(encoding), encoding
+        except UnicodeDecodeError:
+            continue
+    try:
+        import charset_normalizer
+
+        match = charset_normalizer.from_bytes(data[:262144]).best()
+        if match and match.encoding:
+            try:
+                return data.decode(match.encoding), match.encoding
+            except (LookupError, UnicodeDecodeError):
+                pass
+    except Exception:
+        pass
+    for encoding in ("gb18030", "big5", "shift_jis"):
+        try:
+            return data.decode(encoding), encoding
+        except UnicodeDecodeError:
+            continue
+    return data.decode("latin-1"), "latin-1"
+
+
+def _txt_index_path(path: Path) -> Path:
+    return Path(str(path) + TXT_INDEX_SUFFIX)
+
+
+def _build_txt_index(path: Path) -> Dict[str, Any]:
+    data = path.read_bytes()
+    text, encoding = _decode_txt_bytes(data)
+
+    bom_size = 0
+    if data.startswith(codecs.BOM_UTF8):
+        bom_size = len(codecs.BOM_UTF8)
+    elif data.startswith(codecs.BOM_UTF16_LE):
+        bom_size = len(codecs.BOM_UTF16_LE)
+    elif data.startswith(codecs.BOM_UTF16_BE):
+        bom_size = len(codecs.BOM_UTF16_BE)
+
+    pages: List[List[int]] = []
     toc: List[Dict[str, Any]] = []
-    for line in content.splitlines():
+    current_start = bom_size
+    char_count = 0
+    byte_offset = bom_size
+    page_no = 1
+
+    for line in text.splitlines(keepends=True):
+        if char_count > 0 and char_count + len(line) > CHARS_PER_PAGE:
+            pages.append([current_start, byte_offset])
+            current_start = byte_offset
+            char_count = 0
+            page_no += 1
+
         stripped = line.strip()
         if TXT_CHAPTER_RE.match(stripped):
             toc.append(
                 {
                     "title": stripped,
                     "chapterIndex": len(toc),
-                    "startPage": None,
+                    "startPage": page_no,
                     "href": None,
                     "level": 0,
                 }
             )
+
+        char_count += len(line)
+        byte_offset += len(line.encode(encoding))
+
+    if char_count > 0 or not pages:
+        pages.append([current_start, byte_offset])
+
+    stat = path.stat()
+    index = {
+        "version": 1,
+        "size": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+        "encoding": encoding,
+        "total_pages": len(pages),
+        "pages": pages,
+        "toc": toc,
+    }
+    try:
+        _txt_index_path(path).write_text(
+            json.dumps(index, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+    return index
+
+
+def _load_txt_index(path: Path) -> Dict[str, Any]:
+    try:
+        stat = path.stat()
+        index = json.loads(_txt_index_path(path).read_text(encoding="utf-8"))
+        if (
+            index.get("version") == 1
+            and index.get("size") == stat.st_size
+            and index.get("mtime_ns") == stat.st_mtime_ns
+        ):
+            return index
+    except Exception:
+        pass
+    return _build_txt_index(path)
+
+
+def _parse_txt(path: Path) -> Dict[str, Any]:
+    index = _load_txt_index(path)
     return {
         "title": None,
         "author": None,
         "cover_bytes": None,
         "cover_format": None,
-        "pages": math.ceil(len(content) / CHARS_PER_PAGE),
-        "toc": toc,
+        "pages": index["total_pages"],
+        "toc": index["toc"],
     }
+
+
+def txt_info(path: Path) -> Dict[str, Any]:
+    index = _load_txt_index(path)
+    return {
+        "totalPages": index["total_pages"],
+        "encoding": index["encoding"],
+    }
+
+
+def txt_page(path: Path, page_number: int) -> Dict[str, Any]:
+    index = _load_txt_index(path)
+    total_pages = index["total_pages"]
+    if page_number < 1 or page_number > total_pages:
+        raise ValueError("Page out of range")
+    start, end = index["pages"][page_number - 1]
+    with open(path, "rb") as fh:
+        fh.seek(start)
+        content = fh.read(end - start).decode(index["encoding"], errors="replace")
+    return {
+        "page": page_number,
+        "totalPages": total_pages,
+        "encoding": index["encoding"],
+        "content": content,
+    }
+
+
+def txt_text_utf8(path: Path) -> bytes:
+    data = path.read_bytes()
+    text, _ = _decode_txt_bytes(data)
+    return text.encode("utf-8")
 
 
 def convert_kindle_to_epub(path: Path, extension: str = "mobi") -> Path:

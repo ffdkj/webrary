@@ -20,6 +20,10 @@
   var STREAM_URL = '/api/books/' + PARAM_BOOK_ID + '/stream';    // 文件流API地址
   var META_URL = '/api/books/' + PARAM_BOOK_ID;                   // 元数据API地址
   var TOC_URL = '/api/books/' + PARAM_BOOK_ID + '/toc';          // 目录API地址
+  var TXT_INFO_URL = '/api/books/' + PARAM_BOOK_ID + '/txt/info'; // TXT信息API地址
+  function txtPageUrl(page) {
+    return '/api/books/' + PARAM_BOOK_ID + '/txt/page/' + page;
+  }
 
   /* ================================================================
      State — 阅读器状态
@@ -32,6 +36,8 @@
   var pdfPageNum = 1;           // PDF 当前页码
   var pdfTotalPages = 0;        // PDF 总页数
   var pdfCurrentStartPage = 1;  // PDF 当前起始页（双页模式下为左页）
+  var txtPageNum = 1;           // TXT 当前页码
+  var txtTotalPages = 0;        // TXT 总页数
   var readerSettings = { readingMode: 'single', pageFit: 'width', preloadCount: 3 };  // 阅读器设置
 
   /* ================================================================
@@ -773,24 +779,48 @@
     txtReader.style.fontSize = fontSize + 'px';
     dom.readerArea.appendChild(txtReader);
 
-    return fetch(STREAM_URL).then(function (resp) {
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      return resp.text();
-    }).then(function (text) {
-      var parsed = parseTxtToHtml(text);
-      txtReader.innerHTML = parsed.html;
-      tocData = buildTocFromChapters(parsed.chapters);
+    return Promise.all([
+      fetch(TXT_INFO_URL).then(function (r) { return r.json(); }),
+      fetch(TOC_URL).then(function (r) { return r.json(); })
+    ]).then(function (results) {
+      var infoResp = results[0];
+      var tocResp = results[1];
+      if (!infoResp.success) throw new Error(infoResp.message || 'Failed');
+      var info = infoResp.data;
+      txtTotalPages = Math.max(1, info.totalPages || 1);
+      txtPageNum = 1;
+
+      tocData = [];
+      if (tocResp.success && tocResp.data && tocResp.data.length) {
+        tocData = tocResp.data.map(function (it, i) {
+          return {
+            label: it.title || '',
+            href: '#ch-' + i,
+            depth: it.level || 0,
+            page: it.startPage || i + 1
+          };
+        });
+      }
       renderToc();
 
-      var saved = loadProgress();
-      if (saved && saved.scrollTop) {
-        txtReader.scrollTop = saved.scrollTop;
+      if (PARAM_TOC_HREF) {
+        var m = PARAM_TOC_HREF.match(/#?ch-(\d+)/);
+        if (m && tocData[parseInt(m[1], 10)]) {
+          txtPageNum = Math.min(Math.max(1, tocData[parseInt(m[1], 10)].page), txtTotalPages);
+        }
+      }
+      if (!PARAM_TOC_HREF) {
+        var saved = loadProgress();
+        if (saved && saved.page) {
+          txtPageNum = Math.min(Math.max(1, saved.page), txtTotalPages);
+        }
       }
 
-      txtReader.addEventListener('scroll', function () {
-        saveProgress({ scrollTop: txtReader.scrollTop, scrollHeight: txtReader.scrollHeight });
-      });
-
+      dom.pageDivider.style.display = '';
+      dom.pagePrevBtn.style.display = '';
+      dom.pageNextBtn.style.display = '';
+      return renderTxtPage(txtPageNum);
+    }).then(function () {
       hideLoading();
       viewer = { type: 'txt' };
     }).catch(function (err) {
@@ -798,6 +828,45 @@
       hideLoading();
       viewer = { type: 'txt' };
     });
+  }
+
+  // 渲染 TXT 指定页码
+  function renderTxtPage(page) {
+    page = Math.min(Math.max(1, page), Math.max(1, txtTotalPages));
+    txtPageNum = page;
+    var txtReader = document.getElementById('txtReader');
+    if (!txtReader) return Promise.resolve();
+    return fetch(txtPageUrl(page))
+      .then(function (resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.json();
+      })
+      .then(function (resp) {
+        if (!resp.success) throw new Error(resp.message || 'Failed');
+        var data = resp.data;
+        txtTotalPages = Math.max(1, data.totalPages || txtTotalPages);
+        var parsed = parseTxtToHtml(data.content || '');
+        txtReader.innerHTML = parsed.html;
+        txtReader.scrollTop = 0;
+        updateTxtNavState();
+        saveProgress({ page: txtPageNum, totalPages: txtTotalPages });
+      });
+  }
+
+  // 更新 TXT 翻页按钮状态
+  function updateTxtNavState() {
+    dom.pagePrevBtn.disabled = txtPageNum <= 1;
+    dom.pageNextBtn.disabled = txtPageNum >= txtTotalPages;
+  }
+
+  // TXT 上一页
+  function txtPrevPage() {
+    if (txtPageNum > 1) renderTxtPage(txtPageNum - 1);
+  }
+
+  // TXT 下一页
+  function txtNextPage() {
+    if (txtPageNum < txtTotalPages) renderTxtPage(txtPageNum + 1);
   }
 
   // 解析TXT文本为HTML（识别章节标题）
@@ -914,6 +983,8 @@
       if (isPrev) pdfPrevPage(); else pdfNextPage();
     } else if (currentFormat === 'epub' && viewer && viewer.rendition) {
       if (isPrev) viewer.rendition.prev(); else viewer.rendition.next();
+    } else if (currentFormat === 'txt') {
+      if (isPrev) txtPrevPage(); else txtNextPage();
     }
   }
 
@@ -1005,10 +1076,10 @@
           var page = href.replace('#page-', '');
           if (page) renderPdfViewport(parseInt(page, 10));
         }
-      } else if (currentFormat === 'txt' && href) {
-        var target = document.getElementById(href.replace('#', ''));
-        if (target) {
-          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else if (currentFormat === 'txt') {
+        var idx = item ? parseInt(item.dataset.index) : -1;
+        if (idx >= 0 && tocData[idx] && tocData[idx].page) {
+          renderTxtPage(tocData[idx].page);
         }
       }
       closeToc();
@@ -1022,10 +1093,12 @@
     dom.pagePrevBtn.addEventListener('click', function () {
       if (currentFormat === 'pdf') pdfPrevPage();
       else if (currentFormat === 'epub' && viewer && viewer.rendition) viewer.rendition.prev();
+      else if (currentFormat === 'txt') txtPrevPage();
     });
     dom.pageNextBtn.addEventListener('click', function () {
       if (currentFormat === 'pdf') pdfNextPage();
       else if (currentFormat === 'epub' && viewer && viewer.rendition) viewer.rendition.next();
+      else if (currentFormat === 'txt') txtNextPage();
     });
 
     // 点击左右两侧翻页；中间区域和链接/按钮不拦截点击
@@ -1041,11 +1114,13 @@
           e.preventDefault();
           if (currentFormat === 'pdf') pdfPrevPage();
           else if (currentFormat === 'epub' && viewer && viewer.rendition) viewer.rendition.prev();
+          else if (currentFormat === 'txt') txtPrevPage();
           break;
         case 'ArrowRight':
           e.preventDefault();
           if (currentFormat === 'pdf') pdfNextPage();
           else if (currentFormat === 'epub' && viewer && viewer.rendition) viewer.rendition.next();
+          else if (currentFormat === 'txt') txtNextPage();
           break;
         case 'Escape':
           if (dom.tocSidebar.classList.contains('open')) {
