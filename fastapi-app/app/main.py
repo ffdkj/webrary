@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import STATIC_DIR, UPLOAD_DIR
 from .database import db, fetch_all, next_id, now_ms
-from .routers import auth, books, bookshelves, zlibrary
+from .routers import auth, books, bookshelves, settings, zlibrary
 from .schemas import fail
 from .services.ebook import ensure_epub_conversion
 
@@ -60,6 +60,7 @@ app.include_router(auth.router)
 app.include_router(bookshelves.router)
 app.include_router(books.router)
 app.include_router(zlibrary.router)
+app.include_router(settings.router)
 
 
 @app.exception_handler(HTTPException)

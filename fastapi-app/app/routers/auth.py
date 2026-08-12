@@ -12,6 +12,7 @@ from ..auth import (
 )
 from ..database import fetch_one
 from ..schemas import AuthRequest, fail, ok
+from ..services.settings import registration_allowed
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -19,6 +20,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/register")
 def register(request: AuthRequest, response: Response):
+    if not registration_allowed():
+        return fail("注册已关闭")
     email = request.email.strip()
     if not email or not request.password:
         return fail("邮箱和密码不能为空")

@@ -249,8 +249,13 @@ def upload_book(
     file: UploadFile = File(...),
     title: Optional[str] = Form(default=None),
     author: Optional[str] = Form(default=None),
-    shelf_id: int = Form(...),
+    shelf_id: Optional[int] = Form(default=None, alias="shelfId"),
+    legacy_shelf_id: Optional[int] = Form(default=None, alias="shelf_id"),
 ):
+    if shelf_id is None:
+        shelf_id = legacy_shelf_id
+    if shelf_id is None:
+        return fail("shelfId is required")
     if fetch_one("SELECT id FROM bookshelves WHERE id = ?", (shelf_id,)) is None:
         return fail(f"Shelf not found: {shelf_id}")
     original_filename = file.filename or "book"

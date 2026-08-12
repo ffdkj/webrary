@@ -29,6 +29,7 @@
         <button class="auth-tab active" data-auth-tab="login" onclick="window._switchAuthTab?.(this)">登录</button>
         <button class="auth-tab" data-auth-tab="register" onclick="window._switchAuthTab?.(this)">注册</button>
       </div>
+      <p class="login-error" id="authRegisterClosed" style="display:none;">注册已关闭</p>
       <!-- 登录表单 -->
       <form id="authLoginForm" onsubmit="event.preventDefault(); window._handleAuthSubmit?.('login')">
         <div class="form-group">
@@ -308,6 +309,19 @@
           </svg>
           <span>继续阅读</span>
         </button>
+      </section>
+
+      <!-- ============ 设置页 ============ -->
+      <section class="settings-page" id="settingsPage" style="display:none;">
+        <div class="settings-card">
+          <div class="settings-item">
+            <div class="settings-item-label">允许注册</div>
+            <label class="switch">
+              <input type="checkbox" id="registrationToggle">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
       </section>
     </main>
   </div>

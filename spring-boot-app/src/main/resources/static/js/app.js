@@ -66,6 +66,8 @@
     addShelfBtn: $('#addShelfBtn'),
     booksGrid: $('#booksGrid'),
     browseLoadMore: $('#browseLoadMore'),
+    settingsPage: $('#settingsPage'),
+    registrationToggle: $('#registrationToggle'),
     totalBookCount: $('#totalBookCount'),
     emptyState: $('#emptyState'),
     loadingState: $('#loadingState'),
@@ -112,6 +114,7 @@
     authPage: $('#authPage'),
     authApp: $('#authApp'),
     authTabs: $$('.auth-tab'),
+    authRegisterClosed: $('#authRegisterClosed'),
     authLoginForm: $('#authLoginForm'),
     authRegisterForm: $('#authRegisterForm'),
     authLoginEmail: $('#authLoginEmail'),
@@ -279,6 +282,19 @@
     return api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
   }
 
+  // 获取注册开关
+  async function getRegistrationSetting() {
+    return api('/settings/registration');
+  }
+
+  // 更新注册开关
+  async function updateRegistrationSetting(allowRegistration) {
+    return api('/settings/registration', {
+      method: 'PUT',
+      body: JSON.stringify({ allowRegistration }),
+    });
+  }
+
   // 用户登出
   async function authLogout() {
     return api('/auth/logout', { method: 'POST' });
@@ -427,6 +443,7 @@
     state.shelves = [];
     state.books = [];
     showAuthPage();
+    refreshRegistrationAvailability();
   }
 
   // 显示认证页面
@@ -481,6 +498,58 @@
     } catch (err) {
       dom.authError.textContent = err.message || '操作失败';
       dom.authError.style.display = 'block';
+    }
+  }
+
+  /* ================================================================
+     Settings Page — 设置页
+     ================================================================ */
+  // 渲染设置页
+  async function renderSettingsPage() {
+    try {
+      const resp = await getRegistrationSetting();
+      const allowed = !!(resp && resp.success && resp.data && resp.data.allowRegistration);
+      dom.registrationToggle.checked = allowed;
+    } catch {
+      showToast('设置加载失败', 'error');
+    }
+  }
+
+  // 保存注册开关
+  async function handleRegistrationToggle() {
+    const allow = dom.registrationToggle.checked;
+    try {
+      const resp = await updateRegistrationSetting(allow);
+      if (!resp || !resp.success) {
+        dom.registrationToggle.checked = !allow;
+        showToast((resp && resp.message) || '设置保存失败', 'error');
+        return;
+      }
+      showToast(allow ? '已开启注册' : '已关闭注册', 'success');
+    } catch (err) {
+      dom.registrationToggle.checked = !allow;
+      showToast('设置保存失败: ' + err.message, 'error');
+    }
+  }
+
+  // 根据注册开关调整认证页
+  async function refreshRegistrationAvailability() {
+    try {
+      const resp = await getRegistrationSetting();
+      const allowed = !!(resp && resp.success && resp.data && resp.data.allowRegistration);
+      dom.authRegisterClosed.style.display = allowed ? 'none' : 'block';
+      dom.authTabs.forEach((tab) => {
+        if (tab.dataset.authTab === 'register') tab.style.display = allowed ? '' : 'none';
+      });
+      if (!allowed) {
+        const activeTab = document.querySelector('.auth-tab.active');
+        if (activeTab && activeTab.dataset.authTab === 'register') {
+          const loginTab = document.querySelector('.auth-tab[data-auth-tab="login"]');
+          if (loginTab) switchAuthTab(loginTab);
+        }
+      }
+    } catch {
+      // 接口不可用时保持默认可见
     }
   }
 
@@ -1660,6 +1729,9 @@
       case 'history':
         navigateTo('history');
         break;
+      case 'settings':
+        navigateTo('settings');
+        break;
       default:
         // Other pages (settings, about) — placeholder
         showToast('该功能正在开发中', 'info');
@@ -1695,6 +1767,7 @@
     const isBrowse = page === 'browse';
     const isDownloads = page === 'downloads';
     const isHistory = page === 'history';
+    const isSettings = page === 'settings';
     const isDetail = page === 'detail' || page === 'reader';
 
     // Tab bar visible only in shelf mode
@@ -1705,6 +1778,9 @@
 
     // Detail page visible in detail mode
     dom.detailPage.style.display = isDetail ? '' : 'none';
+
+    // Settings page visible in settings mode
+    dom.settingsPage.style.display = isSettings ? '' : 'none';
 
     // Header back button: visible in detail/browse/history
     dom.headerBackBtn.style.display = (isDetail || isBrowse || isHistory) ? '' : 'none';
@@ -1721,6 +1797,11 @@
       dom.refreshBtn.style.display = '';
       dom.totalBookCount.style.display = 'none';
     } else if (isDownloads || isHistory) {
+      dom.searchBtn.style.display = 'none';
+      dom.uploadBtn.style.display = 'none';
+      dom.refreshBtn.style.display = '';
+      dom.totalBookCount.style.display = 'none';
+    } else if (isSettings) {
       dom.searchBtn.style.display = 'none';
       dom.uploadBtn.style.display = 'none';
       dom.refreshBtn.style.display = '';
@@ -1771,6 +1852,9 @@
       case 'history':
         renderHistoryPage();
         break;
+      case 'settings':
+        renderSettingsPage();
+        break;
       case 'detail':
         if (data) {
           state.detailBook = data;
@@ -1806,6 +1890,9 @@
         break;
       case 'history':
         dom.headerTitle.textContent = '历史';
+        break;
+      case 'settings':
+        dom.headerTitle.textContent = '设置';
         break;
     }
   }
@@ -2841,6 +2928,7 @@
 
     // 认证页面
     dom.authTabs.forEach(tab => tab.addEventListener('click', () => switchAuthTab(tab)));
+    dom.registrationToggle.addEventListener('change', handleRegistrationToggle);
     dom.appLogoutBtn.addEventListener('click', handleAppLogout);
     $('#authLoginPass').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') handleAuthSubmit('login');
@@ -2880,10 +2968,12 @@
       } else {
         showAuthPage();
         renderLoginStatus();
+        refreshRegistrationAvailability();
       }
     } catch {
       showAuthPage();
       renderLoginStatus();
+      refreshRegistrationAvailability();
     }
   }
 

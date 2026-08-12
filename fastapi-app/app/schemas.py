@@ -76,3 +76,7 @@ class ZlibraryLoginRequest(CamelModel):
     domain: Optional[str] = None
     proxy_host: Optional[str] = Field(default=None, alias="proxyHost")
     proxy_port: Optional[int] = Field(default=None, alias="proxyPort")
+
+
+class RegistrationSettingRequest(CamelModel):
+    allow_registration: bool = Field(alias="allowRegistration")
