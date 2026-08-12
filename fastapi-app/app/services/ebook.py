@@ -25,6 +25,8 @@ TXT_CHAPTER_RE = re.compile(
     r"|序言|前言|楔子|尾声|后记|附录).*"
 )
 TXT_INDEX_SUFFIX = ".webrary-txt-index.json"
+TXT_READ_CHUNK = 1024 * 1024
+TXT_ENCODING_SAMPLE = 262144
 
 
 def _meta_values(book: Any, name: str) -> List[str]:
@@ -261,16 +263,52 @@ def _txt_index_path(path: Path) -> Path:
     return Path(str(path) + TXT_INDEX_SUFFIX)
 
 
+def _line_byte_encoding(encoding: str) -> str:
+    lowered = encoding.lower()
+    if lowered in ("utf-16", "utf_16"):
+        return "utf-16-le"
+    if lowered.endswith(("-sig", "_sig")):
+        return encoding[:-4]
+    return encoding
+
+
+def _validate_txt_encoding(path: Path, sample: bytes) -> str:
+    try:
+        _, chosen = _decode_txt_bytes(sample)
+    except Exception:
+        chosen = "latin-1"
+    candidates = [chosen]
+    for fallback in ("gb18030", "big5", "shift_jis", "latin-1"):
+        if fallback != chosen:
+            candidates.append(fallback)
+    for encoding in candidates:
+        try:
+            decoder = codecs.getincrementaldecoder(encoding)()
+            with open(path, "rb") as fh:
+                while True:
+                    chunk = fh.read(TXT_READ_CHUNK)
+                    if not chunk:
+                        break
+                    decoder.decode(chunk)
+            decoder.decode(b"", final=True)
+            return encoding
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return "latin-1"
+
+
 def _build_txt_index(path: Path) -> Dict[str, Any]:
-    data = path.read_bytes()
-    text, encoding = _decode_txt_bytes(data)
+    with open(path, "rb") as fh:
+        sample = fh.read(TXT_ENCODING_SAMPLE)
+    encoding = _validate_txt_encoding(path, sample)
+    byte_encoding = _line_byte_encoding(encoding)
 
     bom_size = 0
-    if data.startswith(codecs.BOM_UTF8):
+    if sample.startswith(codecs.BOM_UTF8):
         bom_size = len(codecs.BOM_UTF8)
-    elif data.startswith(codecs.BOM_UTF16_LE):
+    elif sample.startswith(codecs.BOM_UTF16_LE):
         bom_size = len(codecs.BOM_UTF16_LE)
-    elif data.startswith(codecs.BOM_UTF16_BE):
+    elif sample.startswith(codecs.BOM_UTF16_BE):
         bom_size = len(codecs.BOM_UTF16_BE)
 
     pages: List[List[int]] = []
@@ -279,8 +317,11 @@ def _build_txt_index(path: Path) -> Dict[str, Any]:
     char_count = 0
     byte_offset = bom_size
     page_no = 1
+    pending = ""
+    decoder = codecs.getincrementaldecoder(encoding)()
 
-    for line in text.splitlines(keepends=True):
+    def flush_line(line: str) -> None:
+        nonlocal current_start, char_count, byte_offset, page_no
         if char_count > 0 and char_count + len(line) > CHARS_PER_PAGE:
             pages.append([current_start, byte_offset])
             current_start = byte_offset
@@ -300,7 +341,23 @@ def _build_txt_index(path: Path) -> Dict[str, Any]:
             )
 
         char_count += len(line)
-        byte_offset += len(line.encode(encoding))
+        byte_offset += len(line.encode(byte_encoding))
+
+    with open(path, "rb") as fh:
+        if bom_size:
+            fh.seek(bom_size)
+        while True:
+            chunk = fh.read(TXT_READ_CHUNK)
+            if not chunk:
+                break
+            pending += decoder.decode(chunk)
+            parts = pending.split("\n")
+            pending = parts.pop()
+            for part in parts:
+                flush_line(part + "\n")
+    pending += decoder.decode(b"", final=True)
+    if pending:
+        flush_line(pending)
 
     if char_count > 0 or not pages:
         pages.append([current_start, byte_offset])
@@ -378,9 +435,29 @@ def txt_page(path: Path, page_number: int) -> Dict[str, Any]:
 
 
 def txt_text_utf8(path: Path) -> bytes:
-    data = path.read_bytes()
-    text, _ = _decode_txt_bytes(data)
-    return text.encode("utf-8")
+    index = _load_txt_index(path)
+    encoding = index["encoding"]
+    bom_size = index["pages"][0][0] if index["pages"] else 0
+    decoder = codecs.getincrementaldecoder(encoding)()
+    encoder = codecs.getincrementalencoder("utf-8")()
+    chunks: List[bytes] = []
+    with open(path, "rb") as fh:
+        if bom_size:
+            fh.seek(bom_size)
+        while True:
+            chunk = fh.read(TXT_READ_CHUNK)
+            if not chunk:
+                break
+            encoded = encoder.encode(decoder.decode(chunk))
+            if encoded:
+                chunks.append(encoded)
+    tail = encoder.encode(decoder.decode(b"", final=True))
+    if tail:
+        chunks.append(tail)
+    tail = encoder.encode("", final=True)
+    if tail:
+        chunks.append(tail)
+    return b"".join(chunks)
 
 
 def convert_kindle_to_epub(path: Path, extension: str = "mobi") -> Path:
