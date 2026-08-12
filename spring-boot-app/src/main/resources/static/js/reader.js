@@ -1463,7 +1463,10 @@
   // 绑定所有阅读器事件监听器
   function bindEvents() {
     // 目录侧边栏
-    dom.tocBtn.addEventListener('click', toggleToc);
+    dom.tocBtn.addEventListener('click', function () {
+      switchSidebarTab('toc');
+      toggleToc();
+    });
     dom.tocOverlay.addEventListener('click', closeToc);
     dom.tocClose.addEventListener('click', closeToc);
 
