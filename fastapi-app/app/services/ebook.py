@@ -2,7 +2,6 @@
 
 import codecs
 import json
-import math
 import re
 import shutil
 import uuid

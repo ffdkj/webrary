@@ -328,18 +328,6 @@
     return result;
   }
 
-  // 从TXT章节列表构建目录数据
-  function buildTocFromChapters(chapters) {
-    return chapters.map(function (ch, i) {
-      return {
-        label: ch.title,
-        href: '#ch-' + i,
-        depth: 0,
-        index: i
-      };
-    });
-  }
-
   // 渲染目录列表到侧边栏
   function renderToc() {
     if (tocData.length === 0) {
