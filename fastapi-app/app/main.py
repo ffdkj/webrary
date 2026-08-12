@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import STATIC_DIR, UPLOAD_DIR
 from .database import db, fetch_all, next_id, now_ms
+from .migrations import ensure_highlights_table
 from .routers import auth, books, bookshelves, settings, zlibrary
 from .schemas import fail
 from .services.ebook import ensure_epub_conversion
@@ -18,6 +19,7 @@ from .services.ebook import ensure_epub_conversion
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    ensure_highlights_table()
     with db() as conn:
         count = conn.execute("SELECT COUNT(*) AS count FROM bookshelves").fetchone()["count"]
         if count == 0:

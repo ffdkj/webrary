@@ -10,7 +10,15 @@ from fastapi.responses import JSONResponse
 from ..auth import get_current_user_id
 from ..config import MAX_UPLOAD_BYTES, UPLOAD_DIR
 from ..database import db, fetch_all, fetch_one, next_id, now_ms
-from ..schemas import BookAddRequest, ReadingProgressRequest, TransferRequest, fail, ok
+from ..schemas import (
+    BookAddRequest,
+    HighlightCreateRequest,
+    HighlightUpdateRequest,
+    ReadingProgressRequest,
+    TransferRequest,
+    fail,
+    ok,
+)
 from ..services.ebook import (
     ensure_epub_conversion,
     mime_for_extension,
@@ -28,6 +36,8 @@ router = APIRouter(
     tags=["books"],
     dependencies=[Depends(get_current_user_id)],
 )
+
+HIGHLIGHT_COLORS = {"yellow", "green", "blue", "pink"}
 
 
 def _book_dict(book_row, link_id: Optional[int] = None, progress: Optional[dict] = None) -> dict:
@@ -84,6 +94,22 @@ def _ensure_progress(conn, book_id: int):
             "SELECT * FROM reading_progress WHERE book_id = ?", (book_id,)
         ).fetchone()
     return row
+
+
+def _highlight_dict(row) -> dict:
+    return {
+        "id": row["id"],
+        "bookId": row["book_id"],
+        "format": row["format"],
+        "cfiRange": row["cfi_range"],
+        "page": row["page"],
+        "startOffset": row["start_offset"],
+        "endOffset": row["end_offset"],
+        "quote": row["quote"],
+        "color": row["color"],
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
 
 
 @router.get("/shelf/{shelf_id}")
@@ -238,6 +264,7 @@ def delete_book(book_id: int):
     with db() as conn:
         conn.execute("DELETE FROM shelf_books WHERE book_id = ?", (book_id,))
         conn.execute("DELETE FROM reading_progress WHERE book_id = ?", (book_id,))
+        conn.execute("DELETE FROM book_highlights WHERE book_id = ?", (book_id,))
         conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
     if book["is_uploaded"] and book["file_path"]:
         try:
@@ -473,6 +500,128 @@ def get_txt_page(book_id: int, page_number: int):
         return JSONResponse(status_code=404, content=fail("Page out of range"))
     except Exception as exc:
         return JSONResponse(status_code=500, content=fail(f"Read failed: {exc}"))
+
+
+@router.get("/{book_id}/highlights")
+def list_highlights(
+    book_id: int,
+    user_id: int = Depends(get_current_user_id),
+):
+    rows = fetch_all(
+        """
+        SELECT * FROM book_highlights
+        WHERE book_id = ? AND user_id = ?
+        ORDER BY created_at DESC
+        """,
+        (book_id, user_id),
+    )
+    return ok([_highlight_dict(row) for row in rows])
+
+
+@router.post("/{book_id}/highlights")
+def create_highlight(
+    book_id: int,
+    request: HighlightCreateRequest,
+    user_id: int = Depends(get_current_user_id),
+):
+    if fetch_one("SELECT id FROM books WHERE id = ?", (book_id,)) is None:
+        return fail(f"Book not found: {book_id}")
+    fmt = (request.format or "").lower()
+    if fmt not in ("epub", "txt"):
+        return fail("Unsupported highlight format")
+    quote = (request.quote or "").strip()
+    if not quote:
+        return fail("quote is required")
+    if request.color not in HIGHLIGHT_COLORS:
+        return fail("Unsupported highlight color")
+    if fmt == "epub" and not request.cfi_range:
+        return fail("cfiRange is required for epub highlights")
+    if fmt == "txt" and (
+        request.page is None
+        or request.start_offset is None
+        or request.end_offset is None
+    ):
+        return fail("page/startOffset/endOffset are required for txt highlights")
+
+    now = now_ms()
+    with db() as conn:
+        highlight_id = next_id(conn, "book_highlights")
+        conn.execute(
+            """
+            INSERT INTO book_highlights
+                (id, user_id, book_id, format, cfi_range, page, start_offset,
+                 end_offset, quote, color, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                highlight_id,
+                user_id,
+                book_id,
+                fmt,
+                request.cfi_range,
+                request.page,
+                request.start_offset,
+                request.end_offset,
+                quote,
+                request.color,
+                now,
+                now,
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM book_highlights WHERE id = ?", (highlight_id,)
+        ).fetchone()
+    return ok(_highlight_dict(row))
+
+
+@router.put("/{book_id}/highlights/{highlight_id}")
+def update_highlight(
+    book_id: int,
+    highlight_id: int,
+    request: HighlightUpdateRequest,
+    user_id: int = Depends(get_current_user_id),
+):
+    row = fetch_one(
+        """
+        SELECT * FROM book_highlights
+        WHERE id = ? AND book_id = ? AND user_id = ?
+        """,
+        (highlight_id, book_id, user_id),
+    )
+    if row is None:
+        return fail("Highlight not found")
+    color = (request.color or "").strip() or row["color"]
+    if color not in HIGHLIGHT_COLORS:
+        return fail("Unsupported highlight color")
+    with db() as conn:
+        conn.execute(
+            "UPDATE book_highlights SET color = ?, updated_at = ? WHERE id = ?",
+            (color, now_ms(), highlight_id),
+        )
+        row = conn.execute(
+            "SELECT * FROM book_highlights WHERE id = ?", (highlight_id,)
+        ).fetchone()
+    return ok(_highlight_dict(row))
+
+
+@router.delete("/{book_id}/highlights/{highlight_id}")
+def delete_highlight(
+    book_id: int,
+    highlight_id: int,
+    user_id: int = Depends(get_current_user_id),
+):
+    row = fetch_one(
+        """
+        SELECT id FROM book_highlights
+        WHERE id = ? AND book_id = ? AND user_id = ?
+        """,
+        (highlight_id, book_id, user_id),
+    )
+    if row is None:
+        return fail("Highlight not found")
+    with db() as conn:
+        conn.execute("DELETE FROM book_highlights WHERE id = ?", (highlight_id,))
+    return ok("Highlight deleted", None)
 
 
 @router.get("/{book_id}/pdf/info")

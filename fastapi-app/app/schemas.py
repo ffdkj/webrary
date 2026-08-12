@@ -80,3 +80,17 @@ class ZlibraryLoginRequest(CamelModel):
 
 class RegistrationSettingRequest(CamelModel):
     allow_registration: bool = Field(alias="allowRegistration")
+
+
+class HighlightCreateRequest(CamelModel):
+    format: str
+    cfi_range: Optional[str] = Field(default=None, alias="cfiRange")
+    page: Optional[int] = None
+    start_offset: Optional[int] = Field(default=None, alias="startOffset")
+    end_offset: Optional[int] = Field(default=None, alias="endOffset")
+    quote: str
+    color: str = "yellow"
+
+
+class HighlightUpdateRequest(CamelModel):
+    color: Optional[str] = None

@@ -20,6 +20,7 @@
   var STREAM_URL = '/api/books/' + PARAM_BOOK_ID + '/stream';    // 文件流API地址
   var META_URL = '/api/books/' + PARAM_BOOK_ID;                   // 元数据API地址
   var TOC_URL = '/api/books/' + PARAM_BOOK_ID + '/toc';          // 目录API地址
+  var HIGHLIGHTS_URL = '/api/books/' + PARAM_BOOK_ID + '/highlights'; // 摘抄API地址
   var TXT_INFO_URL = '/api/books/' + PARAM_BOOK_ID + '/txt/info'; // TXT信息API地址
   function txtPageUrl(page) {
     return '/api/books/' + PARAM_BOOK_ID + '/txt/page/' + page;
@@ -38,7 +39,16 @@
   var pdfCurrentStartPage = 1;  // PDF 当前起始页（双页模式下为左页）
   var txtPageNum = 1;           // TXT 当前页码
   var txtTotalPages = 0;        // TXT 总页数
+  var highlights = [];          // 当前书籍的摘抄列表
+  var pendingHighlight = null;  // 待保存的选区信息
   var readerSettings = { readingMode: 'single', pageFit: 'width', preloadCount: 3 };  // 阅读器设置
+
+  var HL_COLORS = {
+    yellow: 'rgba(255, 213, 79, 0.55)',
+    green: 'rgba(129, 199, 132, 0.55)',
+    blue: 'rgba(144, 202, 249, 0.55)',
+    pink: 'rgba(244, 143, 177, 0.55)'
+  };
 
   /* ================================================================
       DOM References — DOM引用缓存
@@ -55,10 +65,15 @@
     errorState: $('#errorState'),
     errorMessage: $('#errorMessage'),
     tocBtn: $('#tocBtn'),
+    highlightsBtn: $('#highlightsBtn'),
     tocOverlay: $('#tocOverlay'),
     tocSidebar: $('#tocSidebar'),
     tocList: $('#tocList'),
+    highlightsList: $('#highlightsList'),
+    tocTabBtn: $('#tocTabBtn'),
+    highlightsTabBtn: $('#highlightsTabBtn'),
     tocClose: $('#tocClose'),
+    highlightPopup: $('#highlightPopup'),
     fontSizeDisplay: $('#fontSizeDisplay'),
     fontSizeDown: $('#fontSizeDown'),
     fontSizeUp: $('#fontSizeUp'),
@@ -355,6 +370,317 @@
   }
 
   /* ================================================================
+     Highlights — 摘抄荧光笔
+     ================================================================ */
+  function highlightStyle(color) {
+    return {
+      fill: HL_COLORS[color] || HL_COLORS.yellow,
+      'fill-opacity': '0.9',
+      'mix-blend-mode': 'multiply'
+    };
+  }
+
+  function truncateText(str, max) {
+    if (!str) return '';
+    return str.length > max ? str.slice(0, max) + '…' : str;
+  }
+
+  function renderHighlightsList() {
+    var list = dom.highlightsList;
+    if (!highlights.length) {
+      list.innerHTML = '<span class="loading-text" style="display:block;padding:20px;">暂无摘抄</span>';
+    } else {
+      list.innerHTML = highlights.map(function (hl, i) {
+        var dot = '<span class="hl-dot" style="background:' + (HL_COLORS[hl.color] || HL_COLORS.yellow) + '"></span>';
+        var loc = hl.format === 'epub' ? 'EPUB' : '第 ' + hl.page + ' 页';
+        return '<button class="highlight-item" data-index="' + i + '">'
+          + dot
+          + '<span class="highlight-quote">' + escapeHtml(truncateText(hl.quote, 60)) + '</span>'
+          + '<span class="highlight-loc">' + loc + '</span>'
+          + '</button>';
+      }).join('');
+    }
+    if (dom.highlightsBtn) dom.highlightsBtn.disabled = false;
+  }
+
+  function switchSidebarTab(tab) {
+    var showToc = tab === 'toc';
+    dom.tocTabBtn.classList.toggle('active', showToc);
+    dom.highlightsTabBtn.classList.toggle('active', !showToc);
+    dom.tocList.style.display = showToc ? '' : 'none';
+    dom.highlightsList.style.display = showToc ? 'none' : '';
+    if (!showToc) renderHighlightsList();
+  }
+
+  function loadHighlights() {
+    return fetch(HIGHLIGHTS_URL)
+      .then(function (r) { return r.json(); })
+      .then(function (resp) {
+        highlights = resp && resp.success && Array.isArray(resp.data) ? resp.data : [];
+        renderHighlightsList();
+        if (currentFormat === 'epub') {
+          applyEpubHighlights();
+        } else if (currentFormat === 'txt') {
+          return renderTxtPage(txtPageNum);
+        }
+      })
+      .catch(function () {
+        highlights = [];
+        renderHighlightsList();
+      });
+  }
+
+  function showHighlightPopup(x, y, info) {
+    pendingHighlight = info;
+    var popup = dom.highlightPopup;
+    popup.style.display = 'flex';
+    var w = popup.offsetWidth;
+    var h = popup.offsetHeight;
+    x = Math.max(12, Math.min(x, window.innerWidth - w - 12));
+    y = Math.max(12, Math.min(y, window.innerHeight - h - 12));
+    popup.style.left = x + 'px';
+    popup.style.top = y + 'px';
+  }
+
+  function hideHighlightPopup() {
+    dom.highlightPopup.style.display = 'none';
+    pendingHighlight = null;
+  }
+
+  function savePendingHighlight(color) {
+    var info = pendingHighlight;
+    if (!info) return;
+    hideHighlightPopup();
+    if (info.format === 'epub') {
+      createEpubHighlight(info, color);
+    } else {
+      createTxtHighlight(info, color);
+    }
+  }
+
+  function createTxtHighlight(info, color) {
+    fetch(HIGHLIGHTS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        format: 'txt',
+        page: info.page,
+        startOffset: info.startOffset,
+        endOffset: info.endOffset,
+        quote: info.quote,
+        color: color
+      })
+    }).then(function (r) { return r.json(); })
+      .then(function (resp) {
+        if (resp && resp.success && resp.data) {
+          highlights.unshift(resp.data);
+          renderHighlightsList();
+          renderTxtPage(txtPageNum);
+        }
+      })
+      .catch(function () { /* ignore */ });
+  }
+
+  function createEpubHighlight(info, color) {
+    var cfiRange;
+    try {
+      var cfiEngine = viewer.rendition.epubcfi;
+      var cfiObj = cfiEngine.fromRange(info.range, info.content.cfiBase);
+      cfiRange = 'epubcfi(' + cfiEngine.segmentString(cfiObj.base) + '!' + cfiEngine.segmentString(cfiObj.path);
+      if (cfiObj.range && cfiObj.start && cfiObj.end) {
+        cfiRange += ',' + cfiEngine.segmentString(cfiObj.start) + ',' + cfiEngine.segmentString(cfiObj.end);
+      }
+      cfiRange += ')';
+    } catch (e) {
+      return;
+    }
+    fetch(HIGHLIGHTS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        format: 'epub',
+        cfiRange: cfiRange,
+        quote: info.quote,
+        color: color
+      })
+    }).then(function (r) { return r.json(); })
+      .then(function (resp) {
+        if (resp && resp.success && resp.data) {
+          highlights.unshift(resp.data);
+          renderHighlightsList();
+          try {
+            viewer.rendition.annotations.add(
+              'highlight', cfiRange, { id: resp.data.id }, null, null, highlightStyle(color)
+            );
+          } catch (e) { console.warn('epub highlight add failed', e); }
+        }
+      })
+      .catch(function () { /* ignore */ });
+  }
+
+  function txtSelectionOffsets(container) {
+    var sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+    var range = sel.getRangeAt(0);
+    if (!container.contains(range.commonAncestorContainer)) return null;
+
+    var nodes = [];
+    var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    var offset = 0;
+    while (walker.nextNode()) {
+      var node = walker.currentNode;
+      if (!node.textContent) continue;
+      nodes.push({ node: node, start: offset, end: offset + node.textContent.length });
+      offset += node.textContent.length;
+    }
+    if (!nodes.length) return null;
+
+    function offsetFor(containerNode, charOffset) {
+      for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i];
+        if (n.node === containerNode) return n.start + charOffset;
+        if (containerNode.nodeType === 1 && containerNode.contains(n.node)) {
+          return n.start + charOffset;
+        }
+      }
+      return null;
+    }
+
+    var start = offsetFor(range.startContainer, range.startOffset);
+    var end = offsetFor(range.endContainer, range.endOffset);
+    var quote = sel.toString();
+    if (start == null || end == null || end <= start || !quote) return null;
+    return {
+      page: txtPageNum,
+      startOffset: start,
+      endOffset: end,
+      quote: quote
+    };
+  }
+
+  function maybeShowTxtPopup(e) {
+    var txtReader = document.getElementById('txtReader');
+    if (!txtReader) return;
+    var info = txtSelectionOffsets(txtReader);
+    if (!info) return;
+    var x = e.clientX;
+    var y = e.clientY;
+    if (e.changedTouches && e.changedTouches.length) {
+      x = e.changedTouches[0].clientX;
+      y = e.changedTouches[0].clientY;
+    }
+    if (x == null || y == null) return;
+    showHighlightPopup(x + 4, y + 8, info);
+  }
+
+  function bindTxtHighlightHandlers(txtReader) {
+    if (!txtReader || txtReader.__webraryHlBound) return;
+    txtReader.__webraryHlBound = true;
+    txtReader.addEventListener('mouseup', function (e) {
+      window.setTimeout(function () { maybeShowTxtPopup(e); }, 10);
+    });
+    txtReader.addEventListener('touchend', function (e) {
+      window.setTimeout(function () { maybeShowTxtPopup(e); }, 350);
+    });
+    txtReader.addEventListener('scroll', hideHighlightPopup, true);
+  }
+
+  function applyTxtHighlight(container, hl) {
+    var start = hl.startOffset;
+    var end = hl.endOffset;
+    if (start == null || end == null || end <= start) return;
+    var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    var offset = 0;
+    while (walker.nextNode()) {
+      var node = walker.currentNode;
+      var len = node.textContent.length;
+      var nodeStart = offset;
+      offset += len;
+      var nodeEnd = offset;
+      if (nodeEnd <= start || nodeStart >= end) continue;
+      var s = Math.max(0, start - nodeStart);
+      var e = Math.min(len, end - nodeStart);
+      if (s >= e) continue;
+      var text = node.textContent;
+      var mark = document.createElement('mark');
+      mark.className = 'hl-' + (hl.color || 'yellow');
+      mark.dataset.highlightId = String(hl.id);
+      mark.textContent = text.slice(s, e);
+      var frag = document.createDocumentFragment();
+      if (s > 0) frag.appendChild(document.createTextNode(text.slice(0, s)));
+      frag.appendChild(mark);
+      if (e < len) frag.appendChild(document.createTextNode(text.slice(e)));
+      node.parentNode.replaceChild(frag, node);
+      return;
+    }
+  }
+
+  function applyTxtPageHighlights(container, page) {
+    highlights.forEach(function (hl) {
+      if (hl.format === 'txt' && hl.page === page) applyTxtHighlight(container, hl);
+    });
+  }
+
+  function applyEpubHighlights() {
+    if (!viewer || !viewer.rendition) return;
+    highlights.forEach(function (hl) {
+      if (hl.format !== 'epub' || !hl.cfiRange) return;
+      try {
+        viewer.rendition.annotations.add(
+          'highlight', hl.cfiRange, { id: hl.id }, null, null, highlightStyle(hl.color)
+        );
+      } catch (e) { console.warn('epub highlight restore failed', e); }
+    });
+  }
+
+  function maybeShowEpubPopup(content) {
+    var doc = content && content.document;
+    if (!doc) return;
+    var sel = doc.getSelection ? doc.getSelection() : null;
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    var range = sel.getRangeAt(0);
+    var quote = (sel.toString() || '').trim();
+    if (!quote) return;
+    var rect = range.getBoundingClientRect();
+    var iframeRect = content.iframe ? content.iframe.getBoundingClientRect() : { left: 0, top: 0 };
+    var x = iframeRect.left + rect.left + rect.width / 2;
+    var y = iframeRect.top + rect.bottom + 6;
+    showHighlightPopup(x, y, { format: 'epub', range: range, quote: quote, content: content });
+  }
+
+  function bindEpubHighlightHandlers() {
+    if (!viewer || !viewer.rendition) return;
+    var contents = viewer.rendition.getContents();
+    (contents || []).forEach(function (content) {
+      var doc = content && content.document;
+      if (!doc || doc.__webraryHlBound) return;
+      doc.__webraryHlBound = true;
+      doc.addEventListener('mouseup', function () { maybeShowEpubPopup(content); });
+      doc.addEventListener('touchend', function () {
+        window.setTimeout(function () { maybeShowEpubPopup(content); }, 350);
+      });
+      doc.addEventListener('click', function () { hideHighlightPopup(); });
+    });
+  }
+
+  function jumpToEpubHighlight(hl) {
+    closeToc();
+    if (!viewer || !viewer.rendition || !hl.cfiRange) return;
+    try {
+      viewer.rendition.display(hl.cfiRange);
+    } catch (e) { /* ignore */ }
+  }
+
+  function jumpToTxtHighlight(hl) {
+    closeToc();
+    if (hl.page == null) return;
+    renderTxtPage(hl.page).then(function () {
+      var mark = document.querySelector('mark[data-highlight-id="' + hl.id + '"]');
+      if (mark) mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+
+  /* ================================================================
      Font Size — 字体大小管理
      ================================================================ */
   // 应用字体大小到阅读器和本地存储
@@ -475,6 +801,7 @@
         // Progress tracking
         rendition.on('relocated', function (location) {
           bindEpubTapListeners();
+          bindEpubHighlightHandlers();
           var loc = location.start;
           saveProgress({
             cfi: loc.cfi,
@@ -491,6 +818,8 @@
         return rendition.display().then(function () {
           hideLoading();
           bindEpubTapListeners();
+          bindEpubHighlightHandlers();
+          loadHighlights();
 
           // Load TOC after display
           book.loaded.navigation.then(function (nav) {
@@ -534,6 +863,7 @@
   function initPdf() {
     cleanupPreviousViewer();
     dom.viewerDiv.style.display = 'none';
+    dom.highlightsBtn.disabled = true;
 
     var container = document.createElement('div');
     container.className = 'pdf-container';
@@ -775,14 +1105,22 @@
 
     return Promise.all([
       fetch(TXT_INFO_URL).then(function (r) { return r.json(); }),
-      fetch(TOC_URL).then(function (r) { return r.json(); })
+      fetch(TOC_URL).then(function (r) { return r.json(); }),
+      fetch(HIGHLIGHTS_URL).then(function (r) { return r.json(); }).catch(function () {
+        return { success: false, data: [] };
+      })
     ]).then(function (results) {
       var infoResp = results[0];
       var tocResp = results[1];
+      var highlightsResp = results[2];
       if (!infoResp.success) throw new Error(infoResp.message || 'Failed');
       var info = infoResp.data;
       txtTotalPages = Math.max(1, info.totalPages || 1);
       txtPageNum = 1;
+      highlights = highlightsResp && highlightsResp.success && Array.isArray(highlightsResp.data)
+        ? highlightsResp.data
+        : [];
+      renderHighlightsList();
 
       tocData = [];
       if (tocResp.success && tocResp.data && tocResp.data.length) {
@@ -814,6 +1152,7 @@
       dom.pagePrevBtn.style.display = '';
       dom.pageNextBtn.style.display = '';
       dom.pageIndicator.style.display = 'inline-block';
+      bindTxtHighlightHandlers(txtReader);
       return renderTxtPage(txtPageNum);
     }).then(function () {
       hideLoading();
@@ -842,6 +1181,7 @@
         txtTotalPages = Math.max(1, data.totalPages || txtTotalPages);
         var parsed = parseTxtToHtml(data.content || '');
         txtReader.innerHTML = parsed.html;
+        applyTxtPageHighlights(txtReader, txtPageNum);
         txtReader.scrollTop = 0;
         updateTxtNavState();
         saveProgress({ page: txtPageNum, totalPages: txtTotalPages });
@@ -988,6 +1328,8 @@
 
   function handleReaderAreaClick(e) {
     if (currentFormat === 'epub' || e.defaultPrevented || isInteractiveElement(e.target)) return;
+    var sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return;
     var rect = dom.readerArea.getBoundingClientRect();
     var dir = pageDirectionFromClick(e.clientX - rect.left, rect.width);
     if (dir !== null) doPage(dir);
@@ -1024,6 +1366,36 @@
     dom.tocBtn.addEventListener('click', toggleToc);
     dom.tocOverlay.addEventListener('click', closeToc);
     dom.tocClose.addEventListener('click', closeToc);
+
+    // 摘抄侧栏
+    dom.highlightsBtn.addEventListener('click', function () {
+      openToc();
+      switchSidebarTab('highlights');
+    });
+    dom.tocTabBtn.addEventListener('click', function () { switchSidebarTab('toc'); });
+    dom.highlightsTabBtn.addEventListener('click', function () { switchSidebarTab('highlights'); });
+
+    // 摘抄项点击→跳转
+    dom.highlightsList.addEventListener('click', function (e) {
+      var item = e.target.closest('.highlight-item');
+      if (!item) return;
+      var idx = parseInt(item.dataset.index, 10);
+      var hl = highlights[idx];
+      if (!hl) return;
+      if (hl.format === 'epub') jumpToEpubHighlight(hl);
+      else jumpToTxtHighlight(hl);
+    });
+
+    // 摘抄颜色弹窗
+    dom.highlightPopup.addEventListener('click', function (e) {
+      var swatch = e.target.closest('.hl-swatch');
+      if (!swatch) return;
+      savePendingHighlight(swatch.dataset.color);
+    });
+    document.addEventListener('click', function (e) {
+      if (dom.highlightPopup.contains(e.target)) return;
+      hideHighlightPopup();
+    });
 
     // 设置面板
     dom.settingsBtn.addEventListener('click', toggleSettings);

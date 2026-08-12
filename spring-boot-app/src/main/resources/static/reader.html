@@ -175,6 +175,120 @@
     }
 
     /* ==========================================================
+       摘抄荧光笔
+       ========================================================== */
+    .highlight-popup {
+      position: fixed;
+      z-index: 400;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 8px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+    }
+
+    .hl-swatch {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.18);
+      cursor: pointer;
+      transition: transform var(--transition);
+    }
+    .hl-swatch:hover {
+      transform: scale(1.15);
+    }
+    .hl-swatch[data-color="yellow"] { background: #f6c945; }
+    .hl-swatch[data-color="green"] { background: #7ed68a; }
+    .hl-swatch[data-color="blue"] { background: #7fb6f2; }
+    .hl-swatch[data-color="pink"] { background: #f28fb4; }
+
+    mark.hl-yellow {
+      background: rgba(255, 213, 79, 0.42);
+      color: inherit;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+    mark.hl-green {
+      background: rgba(129, 199, 132, 0.42);
+      color: inherit;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+    mark.hl-blue {
+      background: rgba(144, 202, 249, 0.42);
+      color: inherit;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+    mark.hl-pink {
+      background: rgba(244, 143, 177, 0.42);
+      color: inherit;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
+
+    .sidebar-tabs {
+      display: flex;
+      gap: 4px;
+      padding: 3px;
+      background: var(--surface-elevated);
+      border-radius: var(--radius);
+    }
+    .sidebar-tab {
+      padding: 6px 12px;
+      font-size: 13px;
+      color: var(--muted);
+      border-radius: 6px;
+      transition: all var(--transition);
+    }
+    .sidebar-tab.active {
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    .highlight-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      width: 100%;
+      padding: 12px 20px;
+      text-align: left;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      transition: background var(--transition);
+    }
+    .highlight-item:hover {
+      background: var(--surface-elevated);
+    }
+    .hl-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 5px;
+    }
+    .highlight-quote {
+      flex: 1;
+      min-width: 0;
+      font-size: 13px;
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .highlight-loc {
+      flex-shrink: 0;
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    /* ==========================================================
        主阅读区域
        ========================================================== */
     .reader-area {
@@ -684,6 +798,12 @@
             <path d="M4 6h16M4 12h16M4 18h16"/>
           </svg>
         </button>
+        <button class="toolbar-btn" id="highlightsBtn" title="摘抄" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M8 3H5a2 2 0 00-2 2v14a2 2 0 002 2h3M16 3h3a2 2 0 012 2v14a2 2 0 01-2 2h-3"/>
+            <path d="M12 5l2 4 4 .6-3 2.8.8 4.2-3.8-2.2L8.2 16.6 9 12.4 6 9.6 10 9z"/>
+          </svg>
+        </button>
         <span class="toolbar-divider"></span>
 
         <!-- 阅读设置按钮 -->
@@ -749,7 +869,10 @@
     <div class="toc-overlay" id="tocOverlay"></div>
     <aside class="toc-sidebar" id="tocSidebar">
       <div class="toc-sidebar-header">
-        <span class="toc-sidebar-title">目录</span>
+        <div class="sidebar-tabs">
+          <button class="sidebar-tab active" id="tocTabBtn" data-panel="toc">目录</button>
+          <button class="sidebar-tab" id="highlightsTabBtn" data-panel="highlights">摘抄</button>
+        </div>
         <!-- 关闭目录按钮 -->
         <button class="toc-sidebar-close" id="tocClose" title="关闭">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
@@ -760,7 +883,18 @@
       <div class="toc-list" id="tocList">
         <span class="loading-text" style="display:block;padding:20px;">暂无目录</span>
       </div>
+      <div class="toc-list" id="highlightsList" style="display:none;">
+        <span class="loading-text" style="display:block;padding:20px;">暂无摘抄</span>
+      </div>
     </aside>
+
+    <!-- ===== 摘抄颜色弹窗 ===== -->
+    <div class="highlight-popup" id="highlightPopup">
+      <button class="hl-swatch" data-color="yellow" title="黄色"></button>
+      <button class="hl-swatch" data-color="green" title="绿色"></button>
+      <button class="hl-swatch" data-color="blue" title="蓝色"></button>
+      <button class="hl-swatch" data-color="pink" title="粉色"></button>
+    </div>
 
     <!-- ===== 阅读设置弹窗 ===== -->
     <div class="settings-overlay" id="settingsOverlay"></div>
