@@ -22,6 +22,8 @@ class TxtPaginationTest(unittest.TestCase):
         self.assertIn(sample, first)
         last = txt_page(path, info["totalPages"])["content"]
         self.assertGreater(len(last), 0)
+        utf8_text = txt_text_utf8(path).decode("utf-8")
+        self.assertIn(sample, utf8_text)
         with self.assertRaises(ValueError):
             txt_page(path, info["totalPages"] + 1)
 
