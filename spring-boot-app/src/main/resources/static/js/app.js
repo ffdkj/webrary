@@ -2345,9 +2345,13 @@
       return;
     }
 
-    // Local book: open reader
+    // Local book: open reader page so paging and saved progress work
     if (book.id) {
-      window.open(`/api/books/${book.id}/read`, '_blank');
+      const entityId = book.bookId || book.id;
+      const title = encodeURIComponent(book.title || '');
+      const author = encodeURIComponent(book.author || '');
+      const ext = encodeURIComponent(book.extension || '');
+      window.open(`/reader.html?bookId=${entityId}&title=${title}&author=${author}&ext=${ext}`, '_blank');
     } else {
       showToast('无法打开此书', 'error');
     }
