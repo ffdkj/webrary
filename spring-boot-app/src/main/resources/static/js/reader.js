@@ -593,21 +593,7 @@
   }
 
   function applyTxtHighlight(container, hl) {
-    var start = hl.startOffset;
-    var end = hl.endOffset;
-    if (start == null || end == null || end <= start) return;
-    var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-    var offset = 0;
-    while (walker.nextNode()) {
-      var node = walker.currentNode;
-      var len = node.textContent.length;
-      var nodeStart = offset;
-      offset += len;
-      var nodeEnd = offset;
-      if (nodeEnd <= start || nodeStart >= end) continue;
-      var s = Math.max(0, start - nodeStart);
-      var e = Math.min(len, end - nodeStart);
-      if (s >= e) continue;
+    function wrap(node, s, e) {
       var text = node.textContent;
       var mark = document.createElement('mark');
       mark.className = 'hl-' + (hl.color || 'yellow');
@@ -616,9 +602,41 @@
       var frag = document.createDocumentFragment();
       if (s > 0) frag.appendChild(document.createTextNode(text.slice(0, s)));
       frag.appendChild(mark);
-      if (e < len) frag.appendChild(document.createTextNode(text.slice(e)));
+      if (e < text.length) frag.appendChild(document.createTextNode(text.slice(e)));
       node.parentNode.replaceChild(frag, node);
-      return;
+    }
+
+    var start = hl.startOffset;
+    var end = hl.endOffset;
+    if (start != null && end != null && end > start) {
+      var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+      var offset = 0;
+      while (walker.nextNode()) {
+        var node = walker.currentNode;
+        var len = node.textContent.length;
+        var nodeStart = offset;
+        offset += len;
+        var nodeEnd = offset;
+        if (nodeEnd <= start || nodeStart >= end) continue;
+        var s = Math.max(0, start - nodeStart);
+        var e = Math.min(len, end - nodeStart);
+        if (s >= e) continue;
+        wrap(node, s, e);
+        return;
+      }
+    }
+
+    // 偏移失效时用选中原文在页面文本中搜索兜底
+    if (hl.quote) {
+      var walker2 = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+      while (walker2.nextNode()) {
+        var node2 = walker2.currentNode;
+        var idx = node2.textContent.indexOf(hl.quote);
+        if (idx >= 0) {
+          wrap(node2, idx, idx + hl.quote.length);
+          return;
+        }
+      }
     }
   }
 
