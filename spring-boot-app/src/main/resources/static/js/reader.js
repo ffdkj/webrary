@@ -41,6 +41,8 @@
   var txtTotalPages = 0;        // TXT 总页数
   var highlights = [];          // 当前书籍的摘抄列表
   var pendingHighlight = null;  // 待保存的选区信息
+  var txtPressTimer = null;     // TXT 长按计时器
+  var txtPressPoint = null;     // TXT 长按触摸点
   var readerSettings = { readingMode: 'single', pageFit: 'width', preloadCount: 3 };  // 阅读器设置
 
   var HL_COLORS = {
@@ -565,6 +567,27 @@
     };
   }
 
+  function clearTxtPressTimer() {
+    if (txtPressTimer) {
+      window.clearTimeout(txtPressTimer);
+      txtPressTimer = null;
+    }
+    txtPressPoint = null;
+  }
+
+  function startTxtPressTimer(e) {
+    clearTxtPressTimer();
+    var touch = e.touches && e.touches[0];
+    if (!touch) return;
+    txtPressPoint = { x: touch.clientX, y: touch.clientY };
+    txtPressTimer = window.setTimeout(function () {
+      txtPressTimer = null;
+      var sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !txtPressPoint) return;
+      maybeShowTxtPopup({ clientX: txtPressPoint.x, clientY: txtPressPoint.y });
+    }, 500);
+  }
+
   function maybeShowTxtPopup(e) {
     var txtReader = document.getElementById('txtReader');
     if (!txtReader) return;
@@ -586,7 +609,10 @@
     txtReader.addEventListener('mouseup', function (e) {
       window.setTimeout(function () { maybeShowTxtPopup(e); }, 10);
     });
+    txtReader.addEventListener('touchstart', startTxtPressTimer, true);
+    txtReader.addEventListener('touchmove', clearTxtPressTimer, true);
     txtReader.addEventListener('touchend', function (e) {
+      clearTxtPressTimer();
       window.setTimeout(function () { maybeShowTxtPopup(e); }, 350);
     });
     txtReader.addEventListener('scroll', hideHighlightPopup, true);
@@ -658,7 +684,7 @@
     });
   }
 
-  function maybeShowEpubPopup(content) {
+  function maybeShowEpubPopup(content, point) {
     var doc = content && content.document;
     if (!doc) return;
     var sel = doc.getSelection ? doc.getSelection() : null;
@@ -666,10 +692,17 @@
     var range = sel.getRangeAt(0);
     var quote = (sel.toString() || '').trim();
     if (!quote) return;
-    var rect = range.getBoundingClientRect();
     var iframeRect = content.iframe ? content.iframe.getBoundingClientRect() : { left: 0, top: 0 };
-    var x = iframeRect.left + rect.left + rect.width / 2;
-    var y = iframeRect.top + rect.bottom + 6;
+    var x;
+    var y;
+    if (point) {
+      x = iframeRect.left + point.x + 4;
+      y = iframeRect.top + point.y + 8;
+    } else {
+      var rect = range.getBoundingClientRect();
+      x = iframeRect.left + rect.left + rect.width / 2;
+      y = iframeRect.top + rect.bottom + 6;
+    }
     showHighlightPopup(x, y, { format: 'epub', range: range, quote: quote, content: content });
   }
 
@@ -680,8 +713,31 @@
       var doc = content && content.document;
       if (!doc || doc.__webraryHlBound) return;
       doc.__webraryHlBound = true;
+      var pressTimer = null;
+      var pressPoint = null;
+      function clearPress() {
+        if (pressTimer) {
+          window.clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+        pressPoint = null;
+      }
+      doc.addEventListener('touchstart', function (e) {
+        clearPress();
+        var touch = e.touches && e.touches[0];
+        if (!touch) return;
+        pressPoint = { x: touch.clientX, y: touch.clientY };
+        pressTimer = window.setTimeout(function () {
+          pressTimer = null;
+          var sel = doc.getSelection ? doc.getSelection() : null;
+          if (!sel || sel.isCollapsed || !pressPoint) return;
+          maybeShowEpubPopup(content, pressPoint);
+        }, 500);
+      }, true);
+      doc.addEventListener('touchmove', clearPress, true);
       doc.addEventListener('mouseup', function () { maybeShowEpubPopup(content); });
       doc.addEventListener('touchend', function () {
+        clearPress();
         window.setTimeout(function () { maybeShowEpubPopup(content); }, 350);
       });
       doc.addEventListener('click', function () { hideHighlightPopup(); });
