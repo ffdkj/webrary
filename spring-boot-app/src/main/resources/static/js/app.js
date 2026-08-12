@@ -2901,7 +2901,8 @@
       const item = e.target.closest('.toc-item');
       if (!item) return;
       if (e.target.closest('.toc-item-options')) return;
-      const href = item.dataset.href;
+      // TXT 目录没有 href，用 chapterIndex 生成 #ch-N 让阅读器按章跳页
+      const href = item.dataset.href || `#ch-${item.dataset.chapterindex || item.dataset.index}`;
       if (!href) return;
       const book = state.detailBook;
       if (!book) return;
