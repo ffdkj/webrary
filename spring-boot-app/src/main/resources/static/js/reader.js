@@ -64,6 +64,7 @@
     fontSizeUp: $('#fontSizeUp'),
     pagePrevBtn: $('#pagePrevBtn'),
     pageNextBtn: $('#pageNextBtn'),
+    pageIndicator: $('#pageIndicator'),
     pageDivider: $('#pageDivider'),
     settingsBtn: $('#settingsBtn'),
     settingsOverlay: $('#settingsOverlay'),
@@ -416,6 +417,7 @@
 
     cleanupPreviousViewer();
     dom.viewerDiv.style.display = '';
+    dom.pageIndicator.style.display = 'none';
 
     // Fetch EPUB as ArrayBuffer — epub.js reads from memory without HTTP requests
     return fetch(STREAM_URL)
@@ -582,6 +584,7 @@
         dom.pageDivider.style.display = '';
         dom.pagePrevBtn.style.display = '';
         dom.pageNextBtn.style.display = '';
+        dom.pageIndicator.style.display = 'inline-block';
         hideLoading();
         viewer = { type: 'pdf' };
       })
@@ -735,6 +738,9 @@
     var step = getStepSize();
     dom.pagePrevBtn.disabled = pdfCurrentStartPage <= 1;
     dom.pageNextBtn.disabled = pdfCurrentStartPage + step > pdfTotalPages;
+    if (dom.pageIndicator) {
+      dom.pageIndicator.textContent = pdfCurrentStartPage + ' / ' + pdfTotalPages;
+    }
   }
 
   // PDF 上一页
@@ -807,6 +813,7 @@
       dom.pageDivider.style.display = '';
       dom.pagePrevBtn.style.display = '';
       dom.pageNextBtn.style.display = '';
+      dom.pageIndicator.style.display = 'inline-block';
       return renderTxtPage(txtPageNum);
     }).then(function () {
       hideLoading();
@@ -845,6 +852,9 @@
   function updateTxtNavState() {
     dom.pagePrevBtn.disabled = txtPageNum <= 1;
     dom.pageNextBtn.disabled = txtPageNum >= txtTotalPages;
+    if (dom.pageIndicator) {
+      dom.pageIndicator.textContent = txtPageNum + ' / ' + txtTotalPages;
+    }
   }
 
   // TXT 上一页

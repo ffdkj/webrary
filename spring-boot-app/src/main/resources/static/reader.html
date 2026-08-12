@@ -164,6 +164,16 @@
       user-select: none;
     }
 
+    .page-indicator {
+      display: none;
+      font-size: 12px;
+      color: var(--muted);
+      min-width: 56px;
+      text-align: center;
+      white-space: nowrap;
+      user-select: none;
+    }
+
     /* ==========================================================
        主阅读区域
        ========================================================== */
@@ -712,6 +722,7 @@
             <polyline points="9,18 15,12 9,6"/>
           </svg>
         </button>
+        <span class="page-indicator" id="pageIndicator"></span>
       </div>
     </header>
 
