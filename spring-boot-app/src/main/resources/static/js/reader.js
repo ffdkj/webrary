@@ -55,6 +55,8 @@
   var suppressPopupClick = false;
   var popupHiddenAt = 0;
   var lastTouchEndAt = 0;
+  var pdfToggleAt = 0;
+  var toastTimer = null;
 
   /* ================================================================
       DOM References — DOM引用缓存
@@ -80,6 +82,7 @@
     highlightsTabBtn: $('#highlightsTabBtn'),
     tocClose: $('#tocClose'),
     highlightPopup: $('#highlightPopup'),
+    readerToast: $('#readerToast'),
     fontSizeDisplay: $('#fontSizeDisplay'),
     fontSizeDown: $('#fontSizeDown'),
     fontSizeUp: $('#fontSizeUp'),
@@ -431,6 +434,8 @@
           applyEpubHighlights();
         } else if (currentFormat === 'txt') {
           return renderTxtPage(txtPageNum);
+        } else if (currentFormat === 'pdf') {
+          markPdfSavedPages();
         }
       })
       .catch(function () {
@@ -459,6 +464,18 @@
     pendingHighlight = null;
     suppressPopupClick = false;
     popupHiddenAt = Date.now();
+  }
+
+  function showToast(message) {
+    var toast = dom.readerToast;
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.add('show');
+    if (toastTimer) window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(function () {
+      toast.classList.remove('show');
+      toastTimer = null;
+    }, 2000);
   }
 
   function savePendingHighlight(color) {
@@ -804,6 +821,8 @@
             } catch (e) { /* ignore */ }
           } else if (currentFormat === 'txt') {
             renderTxtPage(txtPageNum);
+          } else if (currentFormat === 'pdf') {
+            markPdfSavedPages();
           }
         }
       })
@@ -990,6 +1009,133 @@
      PDF.js Viewer — PDF 格式阅读器
      ================================================================ */
   // 初始化 PDF 阅读器
+  function markPdfSavedPages() {
+    var container = document.getElementById('pdfContainer');
+    if (!container) return;
+    var images = container.querySelectorAll('.pdf-page');
+    images.forEach(function (img) {
+      var page = parseInt(img.dataset.page, 10);
+      var saved = highlights.some(function (h) {
+        return h.format === 'pdf' && h.page === page;
+      });
+      img.classList.toggle('pdf-saved', saved);
+    });
+  }
+
+  function togglePdfHighlight(page) {
+    if (!page) return;
+    var existing = null;
+    for (var i = 0; i < highlights.length; i++) {
+      if (highlights[i].format === 'pdf' && highlights[i].page === page) {
+        existing = highlights[i];
+        break;
+      }
+    }
+    if (existing) {
+      fetch(HIGHLIGHTS_URL + '/' + existing.id, { method: 'DELETE' })
+        .then(function (r) { return r.json(); })
+        .then(function (resp) {
+          if (resp && resp.success) {
+            highlights = highlights.filter(function (h) { return h.id !== existing.id; });
+            renderHighlightsList();
+            markPdfSavedPages();
+            showToast('已取消收藏第 ' + page + ' 页');
+          }
+        })
+        .catch(function () { /* ignore */ });
+    } else {
+      fetch(HIGHLIGHTS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          format: 'pdf',
+          page: page,
+          quote: '第 ' + page + ' 页',
+          color: 'blue'
+        })
+      }).then(function (r) { return r.json(); })
+        .then(function (resp) {
+          if (resp && resp.success && resp.data) {
+            highlights.unshift(resp.data);
+            renderHighlightsList();
+            markPdfSavedPages();
+            showToast('已收藏第 ' + page + ' 页');
+          }
+        })
+        .catch(function () { /* ignore */ });
+    }
+  }
+
+  function bindPdfHighlightHandlers(container) {
+    if (!container || container.__webraryPdfHlBound) return;
+    container.__webraryPdfHlBound = true;
+
+    var pressTimer = null;
+    var pressPage = null;
+    var pressPoint = null;
+
+    function clearPress() {
+      if (pressTimer) {
+        window.clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+      pressPage = null;
+      pressPoint = null;
+    }
+
+    function pageFromEvent(e) {
+      var img = e.target && e.target.closest ? e.target.closest('.pdf-page') : null;
+      if (!img || !img.dataset.page) return null;
+      return parseInt(img.dataset.page, 10);
+    }
+
+    function startPress(e, page) {
+      clearPress();
+      if (!page) return;
+      var point = e.touches && e.touches[0];
+      if (!point && typeof e.clientX === 'number') point = e;
+      pressPoint = point ? { x: point.clientX, y: point.clientY } : null;
+      pressPage = page;
+      pressTimer = window.setTimeout(function () {
+        pressTimer = null;
+        if (pressPage == null) return;
+        pdfToggleAt = Date.now();
+        togglePdfHighlight(pressPage);
+        clearPress();
+      }, 500);
+    }
+
+    container.addEventListener('touchstart', function (e) {
+      startPress(e, pageFromEvent(e));
+    }, true);
+    container.addEventListener('mousedown', function (e) {
+      startPress(e, pageFromEvent(e));
+    }, true);
+    container.addEventListener('touchmove', function (e) {
+      if (!pressPoint) return;
+      var t = e.touches && e.touches[0];
+      if (t && (Math.abs(t.clientX - pressPoint.x) > 12 || Math.abs(t.clientY - pressPoint.y) > 12)) {
+        clearPress();
+      }
+    }, true);
+    container.addEventListener('mousemove', function (e) {
+      if (!pressPoint) return;
+      if (Math.abs(e.clientX - pressPoint.x) > 12 || Math.abs(e.clientY - pressPoint.y) > 12) {
+        clearPress();
+      }
+    }, true);
+    container.addEventListener('touchend', clearPress, true);
+    container.addEventListener('touchcancel', clearPress, true);
+    container.addEventListener('mouseup', clearPress, true);
+    container.addEventListener('mouseleave', clearPress, true);
+  }
+
+  function jumpToPdfHighlight(hl) {
+    closeToc();
+    if (hl.page == null) return;
+    renderPdfViewport(hl.page);
+  }
+
   function initPdf() {
     cleanupPreviousViewer();
     dom.viewerDiv.style.display = 'none';
@@ -999,6 +1145,7 @@
     container.className = 'pdf-container';
     container.id = 'pdfContainer';
     dom.readerArea.appendChild(container);
+    bindPdfHighlightHandlers(container);
 
     return fetch('/api/books/' + PARAM_BOOK_ID + '/pdf/info')
       .then(function (r) { return r.json(); })
@@ -1045,8 +1192,10 @@
         dom.pagePrevBtn.style.display = '';
         dom.pageNextBtn.style.display = '';
         dom.pageIndicator.style.display = 'inline-block';
-        hideLoading();
-        viewer = { type: 'pdf' };
+        return loadHighlights().then(function () {
+          hideLoading();
+          viewer = { type: 'pdf' };
+        });
       })
       .catch(function (err) {
         showError('PDF 加载失败: ' + escapeHtml(err.message || ''));
@@ -1106,6 +1255,7 @@
         var img = document.createElement('img');
         img.className = 'pdf-page';
         img.id = 'page-' + pageNum;
+        img.dataset.page = String(pageNum);
         img.src = '/api/books/' + PARAM_BOOK_ID + '/pdf/page/' + pageNum + '?dpi=144';
         img.style.display = 'block';
 
@@ -1149,6 +1299,7 @@
       saveProgress({ page: startPage, totalPages: pdfTotalPages });
       updatePdfNavState();
       container.scrollTop = 0;
+      markPdfSavedPages();
       preloadAdjacentPages(startPage, step);
     });
   }
@@ -1459,6 +1610,7 @@
   function handleReaderAreaClick(e) {
     if (currentFormat === 'epub' || e.defaultPrevented || isInteractiveElement(e.target)) return;
     if (dom.highlightPopup.style.display !== 'none' || Date.now() - popupHiddenAt < 300) return;
+    if (currentFormat === 'pdf' && Date.now() - pdfToggleAt < 600) return;
     var sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;
     var rect = dom.readerArea.getBoundingClientRect();
@@ -1530,6 +1682,7 @@
       var hl = highlights[idx];
       if (!hl) return;
       if (hl.format === 'epub') jumpToEpubHighlight(hl);
+      else if (hl.format === 'pdf') jumpToPdfHighlight(hl);
       else jumpToTxtHighlight(hl);
     });
 
