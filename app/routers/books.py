@@ -527,7 +527,7 @@ def create_highlight(
     if fetch_one("SELECT id FROM books WHERE id = ?", (book_id,)) is None:
         return fail(f"Book not found: {book_id}")
     fmt = (request.format or "").lower()
-    if fmt not in ("epub", "txt"):
+    if fmt not in ("epub", "txt", "pdf"):
         return fail("Unsupported highlight format")
     quote = (request.quote or "").strip()
     if not quote:
@@ -542,6 +542,8 @@ def create_highlight(
         or request.end_offset is None
     ):
         return fail("page/startOffset/endOffset are required for txt highlights")
+    if fmt == "pdf" and request.page is None:
+        return fail("page is required for pdf highlights")
 
     now = now_ms()
     with db() as conn:

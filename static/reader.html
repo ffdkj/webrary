@@ -206,6 +206,28 @@
     .hl-swatch[data-color="blue"] { background: #7fb6f2; }
     .hl-swatch[data-color="pink"] { background: #f28fb4; }
 
+    .reader-toast {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 1200;
+      max-width: 320px;
+      padding: 10px 14px;
+      background: rgba(15, 23, 42, 0.92);
+      color: #fff;
+      border-radius: 8px;
+      font-size: 14px;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+      opacity: 0;
+      transform: translateY(-8px);
+      pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+    .reader-toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
     mark.hl-yellow {
       background: rgba(255, 213, 79, 0.42);
       color: inherit;
@@ -351,6 +373,11 @@
     .pdf-page canvas {
       display: block;
       border-radius: 2px;
+    }
+
+    .pdf-page.pdf-saved {
+      outline: 3px solid rgba(144, 202, 249, 0.95);
+      outline-offset: -3px;
     }
 
     /* TXT 阅读器 */
@@ -913,6 +940,9 @@
     </div>
 
     <!-- ===== 阅读设置弹窗 ===== -->
+    <!-- ===== 右上角提示 ===== -->
+    <div class="reader-toast" id="readerToast"></div>
+
     <div class="settings-overlay" id="settingsOverlay"></div>
     <div class="settings-modal" id="settingsModal" style="display:none;">
       <!-- 设置标签页 -->

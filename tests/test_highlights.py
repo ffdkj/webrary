@@ -136,6 +136,26 @@ class HighlightApiTest(unittest.TestCase):
         ).json()
         self.assertFalse(bad_color["success"])
 
+    def test_pdf_page_highlight(self):
+        created = self.client.post(
+            "/api/books/1/highlights",
+            json={"format": "pdf", "page": 7, "quote": "第 7 页", "color": "blue"},
+        ).json()
+        self.assertTrue(created["success"])
+        self.assertEqual(created["data"]["format"], "pdf")
+        self.assertEqual(created["data"]["page"], 7)
+
+        listed = self.client.get("/api/books/1/highlights").json()
+        self.assertEqual(len(listed["data"]), 1)
+        self.assertEqual(listed["data"][0]["quote"], "第 7 页")
+
+    def test_pdf_highlight_requires_page(self):
+        bad = self.client.post(
+            "/api/books/1/highlights",
+            json={"format": "pdf", "quote": "第 7 页", "color": "blue"},
+        ).json()
+        self.assertFalse(bad["success"])
+
 
 if __name__ == "__main__":
     unittest.main()
