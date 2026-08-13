@@ -51,6 +51,10 @@
     blue: 'rgba(144, 202, 249, 0.55)',
     pink: 'rgba(244, 143, 177, 0.55)'
   };
+  var popupShownAt = 0;
+  var suppressPopupClick = false;
+  var popupHiddenAt = 0;
+  var lastTouchEndAt = 0;
 
   /* ================================================================
       DOM References — DOM引用缓存
@@ -437,6 +441,8 @@
 
   function showHighlightPopup(x, y, info) {
     pendingHighlight = info;
+    popupShownAt = Date.now();
+    suppressPopupClick = true;
     var popup = dom.highlightPopup;
     popup.style.display = 'flex';
     var w = popup.offsetWidth;
@@ -448,8 +454,11 @@
   }
 
   function hideHighlightPopup() {
+    if (dom.highlightPopup.style.display === 'none') return;
     dom.highlightPopup.style.display = 'none';
     pendingHighlight = null;
+    suppressPopupClick = false;
+    popupHiddenAt = Date.now();
   }
 
   function savePendingHighlight(color) {
@@ -613,9 +622,14 @@
     txtReader.addEventListener('touchmove', clearTxtPressTimer, true);
     txtReader.addEventListener('touchend', function (e) {
       clearTxtPressTimer();
-      window.setTimeout(function () { maybeShowTxtPopup(e); }, 350);
+      maybeShowTxtPopup(e);
     });
     txtReader.addEventListener('scroll', hideHighlightPopup, true);
+    document.addEventListener('selectionchange', function () {
+      if (dom.highlightPopup.style.display === 'none') return;
+      var info = txtSelectionOffsets(txtReader);
+      if (info) pendingHighlight = info;
+    });
   }
 
   function applyTxtHighlight(container, hl) {
@@ -738,9 +752,25 @@
       doc.addEventListener('mouseup', function () { maybeShowEpubPopup(content); });
       doc.addEventListener('touchend', function () {
         clearPress();
-        window.setTimeout(function () { maybeShowEpubPopup(content); }, 350);
+        maybeShowEpubPopup(content);
       });
-      doc.addEventListener('click', function () { hideHighlightPopup(); });
+      doc.addEventListener('selectionchange', function () {
+        if (dom.highlightPopup.style.display === 'none') return;
+        var sel = doc.getSelection ? doc.getSelection() : null;
+        if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+        var range = sel.getRangeAt(0);
+        var quote = (sel.toString() || '').trim();
+        if (!quote) return;
+        pendingHighlight = { format: 'epub', range: range, quote: quote, content: content };
+      });
+      doc.addEventListener('click', function () {
+        if (suppressPopupClick) {
+          suppressPopupClick = false;
+          return;
+        }
+        if (Date.now() - popupShownAt < 500) return;
+        hideHighlightPopup();
+      });
     });
   }
 
@@ -1428,6 +1458,7 @@
 
   function handleReaderAreaClick(e) {
     if (currentFormat === 'epub' || e.defaultPrevented || isInteractiveElement(e.target)) return;
+    if (dom.highlightPopup.style.display !== 'none' || Date.now() - popupHiddenAt < 300) return;
     var sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;
     var rect = dom.readerArea.getBoundingClientRect();
@@ -1437,6 +1468,12 @@
 
   function handleEpubClick(e) {
     if (e.defaultPrevented || isInteractiveElement(e.target)) return;
+    if (dom.highlightPopup.style.display !== 'none' || Date.now() - popupHiddenAt < 300) return;
+    var doc = e.currentTarget && e.currentTarget.nodeType === 9
+      ? e.currentTarget
+      : (e.target.ownerDocument || document);
+    var sel = doc.getSelection ? doc.getSelection() : null;
+    if (sel && sel.rangeCount > 0 && !sel.isCollapsed) return;
     var rect = dom.readerArea.getBoundingClientRect();
     var topWin = window.top || window;
     var viewportLeft = topWin.screenX + ((topWin.outerWidth || 0) - (topWin.innerWidth || 0));
@@ -1502,8 +1539,24 @@
       if (!swatch) return;
       savePendingHighlight(swatch.dataset.color);
     });
+    document.addEventListener('mousedown', function (e) {
+      if (Date.now() - lastTouchEndAt < 500) return;
+      if (dom.highlightPopup.contains(e.target)) return;
+      hideHighlightPopup();
+    });
+    document.addEventListener('touchend', function () {
+      lastTouchEndAt = Date.now();
+    }, true);
+    document.addEventListener('touchcancel', function () {
+      lastTouchEndAt = Date.now();
+    }, true);
     document.addEventListener('click', function (e) {
       if (dom.highlightPopup.contains(e.target)) return;
+      if (suppressPopupClick) {
+        suppressPopupClick = false;
+        return;
+      }
+      if (Date.now() - popupShownAt < 500) return;
       hideHighlightPopup();
     });
 
