@@ -1,19 +1,15 @@
 # Runtime data
 data/
-**/target/
 **/__pycache__/
 *.pyc
 
-# IDE
+# Environment and logs
+.env
+*.log
+
+# OS/IDE
+.DS_Store
+Thumbs.db
 .idea/
 *.iml
 .vscode/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Temp files
-nul
-*.tmp
-*.log

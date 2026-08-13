@@ -1,164 +1,51 @@
-# Webrary
+# Webrary FastAPI
 
-Self-hosted web book library manager with integrated Z-Library API client. Browse, search, download, upload, organize on bookshelves, and read books in-browser.
+Webrary 的 FastAPI 后端版本，包含完整前端静态资源，可直接部署使用。
 
-![Tech Stack](https://img.shields.io/badge/Java-17-blue) ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-green) ![SQLite](https://img.shields.io/badge/SQLite-3-blue)
+## 功能
 
-## Features
+- 书架、上传、阅读进度、继续阅读
+- EPUB / PDF / TXT / MOBI / AZW3 阅读支持
+- Z-Library 搜索、下载、高级筛选、无限滚动
+- 书签与摘抄（EPUB CFI / TXT 页码偏移），多用户隔离
+- 会话登录与注册开关设置
 
-- **Bookshelf management** — create, rename, reorder, delete shelves; drag-and-drop book transfer
-- **Z-Library integration** — login with credentials, browse popular books, search with filters (year, language, format), download directly to server
-- **Background downloads** — async download queue with real-time progress tracking; add to shelf and download in one click
-- **Upload support** — EPUB, PDF, TXT, MOBI, AZW3; auto-extracts metadata, cover, and table of contents
-- **In-browser reader** — EPUB (epub.js), PDF (server-rendered PNG via PDFBox), TXT reader with chapter detection
-- **Table of contents** — EPUB NCX + XHTML parsing, PDF outline extraction, TXT chapter auto-detection
-- **Reading progress** — per-book tracking with continue-reading resume
-- **MOBI/AZW3 conversion** — auto-convert to EPUB via Calibre `ebook-convert`
-- **Full-text search** — Z-Library search with advanced filters
-- **Dark theme UI** — custom design system, responsive layout, vanilla JavaScript SPA
-
-## Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Backend | Java 17, Spring Boot 3.5, Spring Data JPA |
-| Database | SQLite (via Hibernate SQLiteDialect) |
-| HTTP Client | OkHttp 4.12 |
-| EPUB Parsing | epublib-core 3.1 |
-| PDF Rendering | Apache PDFBox 3.0.3 |
-| Ebook Reader | epub.js + custom rendering |
-| Frontend | Vanilla JS, CSS custom properties |
-
-## Quick Start
-
-### Prerequisites
-
-- **JDK 17+**
-- **Maven 3.6+**
-- **Calibre** (optional — only for MOBI/AZW3 → EPUB conversion)
-
-### Build & Run
+## 本地运行
 
 ```bash
-cd spring-boot-app
-
-# Build
-mvn clean package -DskipTests
-
-# Run
-java -jar target/webrary-1.0.0.jar
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-The app starts on **http://localhost:8080**. The SQLite database (`data/webrary.db`) and upload directory (`data/uploads/`) are created automatically on first run.
+首次启动会自动创建 SQLite 数据库与全部表结构。数据库和上传文件存放在 `data/` 目录。
 
-### Run directly with Maven
+## Docker 部署
 
 ```bash
-cd spring-boot-app
-mvn spring-boot:run
+docker compose up -d --build
 ```
 
-## Configuration
+服务默认监听 `http://localhost:8000`。数据卷挂载在 `./data:/app/data`，升级或重建容器不会丢失数据。
 
-Edit `spring-boot-app/src/main/resources/application.yml`:
+生产环境请至少设置：
 
-```yaml
-server:
-  port: 8080                    # HTTP port
-
-spring:
-  datasource:
-    url: jdbc:sqlite:data/webrary.db
-  servlet:
-    multipart:
-      max-file-size: 100MB
-      max-request-size: 100MB
-
-webrary:
-  upload-dir: data/uploads      # Book file storage
-  calibre:
-    path: ebook-convert         # Calibre CLI path
+```bash
+export SESSION_SECRET="a-long-random-secret"
 ```
 
-## API Routes
+## 环境变量
 
-### Auth (`/api/auth`)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/register` | Register |
-| POST | `/api/auth/login` | Login |
-| POST | `/api/auth/logout` | Logout |
-| GET | `/api/auth/me` | Current user |
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `SESSION_SECRET` | dev secret | 会话签名密钥，生产环境必须修改 |
+| `Z_LIBRARY_DEFAULT_DOMAIN` | `fuckfbi.ru` | Z-Library 默认域名 |
+| `MAX_UPLOAD_BYTES` | `209715200` | 单文件上传大小上限（200MB） |
+| `WEBRARY_DB` | `data/webrary.db` | 数据库文件路径 |
+| `WEBRARY_UPLOAD_DIR` | `data/uploads` | 上传文件目录 |
+| `WEBRARY_STATIC_DIR` | `static` | 前端静态资源目录 |
 
-### Bookshelves (`/api/bookshelves`)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/bookshelves` | List all shelves |
-| POST | `/api/bookshelves` | Create shelf |
-| PUT | `/api/bookshelves/{id}` | Rename |
-| DELETE | `/api/bookshelves/{id}` | Delete |
-| POST | `/api/bookshelves/reorder` | Reorder |
-| GET | `/api/bookshelves/{id}/stats` | Statistics |
+## 测试
 
-### Books (`/api/books`)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/books/shelf/{shelfId}` | Books in shelf |
-| POST | `/api/books/shelf/{shelfId}` | Add to shelf |
-| DELETE | `/api/books/shelf/{shelfId}/book/{bookId}` | Remove |
-| POST | `/api/books/transfer` | Transfer between shelves |
-| DELETE | `/api/books/{bookId}` | Delete |
-| POST | `/api/books/upload` | Upload file |
-| GET | `/api/books/{bookId}/toc` | Table of contents |
-| GET | `/api/books/{bookId}/read` | Download file |
-| GET | `/api/books/{bookId}/stream` | Stream inline |
-| GET | `/api/books/{bookId}/progress` | Reading progress |
-| PUT | `/api/books/{bookId}/progress` | Update progress |
-| POST | `/api/books/{bookId}/convert` | Convert to EPUB |
-| GET | `/api/books/{bookId}/pdf/info` | PDF metadata |
-| GET | `/api/books/{bookId}/pdf/page/{n}` | Render PDF page |
-
-### Z-Library (`/api/zlibrary`)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/zlibrary/login` | Login |
-| GET | `/api/zlibrary/status` | Check status |
-| GET | `/api/zlibrary/downloads-left` | Quota |
-| POST | `/api/zlibrary/search` | Search |
-| GET | `/api/zlibrary/most-popular` | Popular books |
-| GET | `/api/zlibrary/book/{id}/{hash}` | Book info |
-| GET | `/api/zlibrary/book/{id}/{hash}/download/file` | Download |
-| POST | `/api/zlibrary/download/start` | Async download |
-| GET | `/api/zlibrary/download/list` | Task list |
-| GET | `/api/zlibrary/download/status/{taskId}` | Task status |
-
-## Project Structure
-
+```bash
+python -m unittest discover -s tests
 ```
-webrary/
-├── spring-boot-app/
-│   ├── pom.xml                         # Maven build
-│   └── src/main/
-│       ├── java/com/webrary/
-│       │   ├── WebraryApplication.java # Entry point
-│       │   ├── config/                 # AuthInterceptor, WebConfig, CORS
-│       │   ├── controller/             # REST controllers (4)
-│       │   ├── service/                # Business logic (7 services)
-│       │   ├── dto/                    # Data transfer objects
-│       │   ├── model/                  # JPA entities (7)
-│       │   ├── repository/             # Spring Data repos
-│       │   └── zlibrary/               # Z-Library HTTP client
-│       └── resources/
-│           ├── application.yml         # Configuration
-│           └── static/
-│               ├── index.html          # Main SPA
-│               ├── reader.html         # In-browser reader
-│               ├── css/style.css       # Design system
-│               ├── js/app.js           # SPA logic
-│               └── js/reader.js        # Reader logic
-└── zlibrary_api_doc.md                 # Z-Library API reference
-```
-
-## License
-
-MIT
