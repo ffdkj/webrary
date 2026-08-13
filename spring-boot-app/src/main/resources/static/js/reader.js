@@ -1128,6 +1128,11 @@
     container.addEventListener('touchcancel', clearPress, true);
     container.addEventListener('mouseup', clearPress, true);
     container.addEventListener('mouseleave', clearPress, true);
+    container.addEventListener('contextmenu', function (e) {
+      if (e.target && e.target.closest && e.target.closest('.pdf-page')) {
+        e.preventDefault();
+      }
+    }, true);
   }
 
   function jumpToPdfHighlight(hl) {
@@ -1256,6 +1261,7 @@
         img.className = 'pdf-page';
         img.id = 'page-' + pageNum;
         img.dataset.page = String(pageNum);
+        img.draggable = false;
         img.src = '/api/books/' + PARAM_BOOK_ID + '/pdf/page/' + pageNum + '?dpi=144';
         img.style.display = 'block';
 
