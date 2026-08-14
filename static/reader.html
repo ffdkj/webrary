@@ -382,6 +382,26 @@
       touch-action: pan-y;
     }
 
+    .reader-tap-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 50;
+      display: none;
+    }
+
+    .reader-tap-layer.active {
+      display: flex;
+    }
+
+    .reader-tap-zone {
+      flex: 0 0 30%;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .reader-tap-zone.tap-toggle {
+      flex: 1 1 auto;
+    }
+
     /* PDF 阅读容器 */
     .pdf-container {
       width: 100%;
@@ -1034,6 +1054,6 @@
   <script src="/vendor/epub.min.js"></script>
 
   <!-- ===== 阅读器逻辑脚本（epub.js 全局暴露 ePub 对象） ===== -->
-  <script src="/js/reader.js?v=20260815-2"></script>
+  <script src="/js/reader.js?v=20260815-3"></script>
 </body>
 </html>
