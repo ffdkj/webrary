@@ -1,4 +1,4 @@
-const CACHE_NAME = 'webrary-shell-v2';
+const CACHE_NAME = 'webrary-shell-v3';
 
 const PRECACHE_URLS = [
   '/',
@@ -11,6 +11,9 @@ const PRECACHE_URLS = [
   '/vendor/jszip.min.js',
   '/vendor/epub.min.js',
   '/manifest.json',
+  '/icons/webrary.svg',
+  '/icons/favicon-16.png',
+  '/icons/favicon-32.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/icons/maskable-512.png',
