@@ -1,0 +1,12 @@
+services:
+  webrary:
+    build: .
+    container_name: webrary
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - SESSION_SECRET=${SESSION_SECRET:-webrary-dev-secret-change-me}
+      - Z_LIBRARY_DEFAULT_DOMAIN=${Z_LIBRARY_DEFAULT_DOMAIN:-fuckfbi.ru}
+    restart: unless-stopped

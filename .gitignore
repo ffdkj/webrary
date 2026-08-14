@@ -1,0 +1,15 @@
+# Runtime data
+data/
+**/__pycache__/
+*.pyc
+
+# Environment and logs
+.env
+*.log
+
+# OS/IDE
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+.vscode/
