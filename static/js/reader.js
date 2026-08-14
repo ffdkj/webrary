@@ -56,6 +56,8 @@
   var popupHiddenAt = 0;
   var lastTouchEndAt = 0;
   var pdfToggleAt = 0;
+  var lastSwipeAt = 0;
+  var lastTouchTapAt = 0;
   var toastTimer = null;
 
   /* ================================================================
@@ -1664,14 +1666,9 @@
     }
   }
 
-  function handleReaderAreaClick(e) {
-    if (currentFormat === 'epub' || e.defaultPrevented || isInteractiveElement(e.target)) return;
-    if (dom.highlightPopup.style.display !== 'none' || Date.now() - popupHiddenAt < 300) return;
-    if (currentFormat === 'pdf' && Date.now() - pdfToggleAt < 600) return;
-    var sel = window.getSelection();
-    if (sel && !sel.isCollapsed) return;
+  function handleReaderPoint(clientX) {
     var rect = dom.readerArea.getBoundingClientRect();
-    var dir = pageDirectionFromClick(e.clientX - rect.left, rect.width);
+    var dir = pageDirectionFromClick(clientX - rect.left, rect.width);
     if (dir !== null) {
       doPage(dir);
       scheduleToolbarHide();
@@ -1680,8 +1677,19 @@
     }
   }
 
+  function handleReaderAreaClick(e) {
+    if (currentFormat === 'epub' || e.defaultPrevented || isInteractiveElement(e.target)) return;
+    if (Date.now() - lastSwipeAt < 600 || Date.now() - lastTouchTapAt < 400) return;
+    if (dom.highlightPopup.style.display !== 'none' || Date.now() - popupHiddenAt < 300) return;
+    if (currentFormat === 'pdf' && Date.now() - pdfToggleAt < 600) return;
+    var sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return;
+    handleReaderPoint(e.clientX);
+  }
+
   function handleEpubClick(e) {
     if (e.defaultPrevented || isInteractiveElement(e.target)) return;
+    if (Date.now() - lastSwipeAt < 600 || Date.now() - lastTouchTapAt < 400) return;
     if (dom.highlightPopup.style.display !== 'none' || Date.now() - popupHiddenAt < 300) return;
     var doc = e.currentTarget && e.currentTarget.nodeType === 9
       ? e.currentTarget
@@ -1689,27 +1697,125 @@
     var sel = doc.getSelection ? doc.getSelection() : null;
     if (sel && sel.rangeCount > 0 && !sel.isCollapsed) return;
     var rect = dom.readerArea.getBoundingClientRect();
-    var topWin = window.top || window;
-    var viewportLeft = topWin.screenX + ((topWin.outerWidth || 0) - (topWin.innerWidth || 0));
-    if (typeof e.screenX !== 'number') return;
-    var x = e.screenX - viewportLeft - rect.left;
-    var dir = pageDirectionFromClick(x, rect.width);
-    if (dir !== null) {
-      doPage(dir);
-      scheduleToolbarHide();
-    } else {
-      toggleToolbar();
+    var x = null;
+    if (typeof e.clientX === 'number') {
+      var frameEl = e.view && e.view.frameElement ? e.view.frameElement : null;
+      var frameRect = frameEl ? frameEl.getBoundingClientRect()
+        : (dom.viewerDiv ? dom.viewerDiv.getBoundingClientRect() : { left: 0 });
+      x = frameRect.left + e.clientX - rect.left;
+    } else if (typeof e.screenX === 'number') {
+      var topWin = window.top || window;
+      var viewportLeft = topWin.screenX + ((topWin.outerWidth || 0) - (topWin.innerWidth || 0));
+      x = e.screenX - viewportLeft - rect.left;
     }
+    if (x === null) return;
+    handleReaderPoint(x);
+  }
+
+  var swipeStart = null;
+  var swipeTriggered = false;
+
+  function attachSwipeHandlers(target) {
+    if (!target || target.__webrarySwipeBound) return;
+    target.__webrarySwipeBound = true;
+
+    function clearSwipe() {
+      swipeStart = null;
+      swipeTriggered = false;
+    }
+
+    target.addEventListener('touchstart', function (e) {
+      clearSwipe();
+      if (dom.tocSidebar.classList.contains('open') || dom.settingsOverlay.classList.contains('open')) return;
+      if (dom.highlightPopup.style.display !== 'none') return;
+      if (isInteractiveElement(e.target)) return;
+      var touch = e.touches && e.touches[0];
+      if (!touch) return;
+      swipeStart = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    }, true);
+
+    target.addEventListener('touchmove', function (e) {
+      if (!swipeStart || swipeTriggered) return;
+      var touch = e.touches && e.touches[0];
+      if (!touch) return;
+      var dx = touch.clientX - swipeStart.x;
+      var dy = touch.clientY - swipeStart.y;
+      if (Math.abs(dx) < 24 && Math.abs(dy) < 24) return;
+      var rect = dom.readerArea.getBoundingClientRect();
+      var threshold = Math.max(64, rect.width * 0.16);
+      if (Math.abs(dx) >= threshold && Math.abs(dx) > Math.abs(dy) * 1.2) {
+        swipeTriggered = true;
+        swipeStart.direction = dx > 0 ? 'right' : 'left';
+        if (e.cancelable) e.preventDefault();
+      }
+    }, true);
+
+    target.addEventListener('touchend', function (e) {
+      if (!swipeStart || !swipeTriggered) {
+        clearSwipe();
+        return;
+      }
+      var direction = swipeStart.direction;
+      var duration = Date.now() - swipeStart.time;
+      lastSwipeAt = Date.now();
+      clearSwipe();
+      if (duration > 700) return;
+      if (e.cancelable) e.preventDefault();
+      doPage(direction === 'right');
+    }, true);
+
+    target.addEventListener('touchcancel', clearSwipe, true);
   }
 
   function bindEpubTapListeners() {
     if (!viewer || !viewer.rendition) return;
     var contents = viewer.rendition.getContents();
     (contents || []).forEach(function (content) {
-      if (content && content.document && !content.document.__webraryTapBound) {
-        content.document.__webraryTapBound = true;
-        content.document.addEventListener('click', handleEpubClick, true);
+      if (!content || !content.document || content.document.__webraryTapBound) return;
+      content.document.__webraryTapBound = true;
+
+      if (content.document.documentElement) {
+        content.document.documentElement.style.touchAction = 'pan-y';
       }
+      attachSwipeHandlers(content.document);
+      content.document.addEventListener('click', handleEpubClick, true);
+
+      var tapStart = null;
+      content.document.addEventListener('touchstart', function (e) {
+        tapStart = null;
+        if (dom.tocSidebar.classList.contains('open') || dom.settingsOverlay.classList.contains('open')) return;
+        if (dom.highlightPopup.style.display !== 'none') return;
+        if (isInteractiveElement(e.target)) return;
+        var touch = e.touches && e.touches[0];
+        if (!touch) return;
+        tapStart = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+      }, true);
+      content.document.addEventListener('touchmove', function (e) {
+        if (!tapStart) return;
+        var touch = e.touches && e.touches[0];
+        if (!touch) return;
+        if (Math.abs(touch.clientX - tapStart.x) > 14 || Math.abs(touch.clientY - tapStart.y) > 14) {
+          tapStart = null;
+        }
+      }, true);
+      content.document.addEventListener('touchend', function (e) {
+        if (!tapStart) return;
+        var duration = Date.now() - tapStart.time;
+        var touch = e.changedTouches && e.changedTouches[0];
+        if (!touch || duration > 450 || Date.now() - lastSwipeAt < 600) {
+          tapStart = null;
+          return;
+        }
+        var sel = content.document.getSelection ? content.document.getSelection() : null;
+        if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+          tapStart = null;
+          return;
+        }
+        tapStart = null;
+        var frameRect = content.iframe ? content.iframe.getBoundingClientRect() : { left: 0 };
+        lastTouchTapAt = Date.now();
+        handleReaderPoint(frameRect.left + touch.clientX - dom.readerArea.getBoundingClientRect().left);
+      }, true);
     });
   }
 
@@ -1861,6 +1967,7 @@
 
     // 点击左右两侧翻页；中间区域和链接/按钮不拦截点击
     dom.readerArea.addEventListener('click', handleReaderAreaClick);
+    attachSwipeHandlers(dom.readerArea);
 
     // 键盘快捷键：左右箭头翻页，Esc关闭面板
     document.addEventListener('keydown', function (e) {
