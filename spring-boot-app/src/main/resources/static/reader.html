@@ -2,11 +2,20 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
   <title>Reader — BookReader</title>
+  <meta name="theme-color" content="#080808">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Webrary">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="/js/pwa.js" defer></script>
   <style>
     /* ==========================================================
        阅读器 — CSS 自定义变量与基础重置
@@ -31,6 +40,10 @@
       --transition-slow: 0.3s ease;
       --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
       --font-reading: 'Noto Serif SC', 'Georgia', 'Times New Roman', serif;
+      --sat: env(safe-area-inset-top, 0px);
+      --sab: env(safe-area-inset-bottom, 0px);
+      --sal: env(safe-area-inset-left, 0px);
+      --sar: env(safe-area-inset-right, 0px);
     }
 
     *, *::before, *::after {
@@ -42,6 +55,8 @@
     html, body {
       height: 100%;
       overflow: hidden;
+      overscroll-behavior: none;
+      -webkit-tap-highlight-color: transparent;
       font-family: var(--font-ui);
       background: var(--bg);
       color: var(--text);
@@ -70,9 +85,8 @@
        布局
        ========================================================== */
     .app {
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
+      display: block;
+      height: 100dvh;
       overflow: hidden;
       position: relative;
     }
@@ -81,18 +95,29 @@
        顶部工具栏
        ========================================================== */
     .toolbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 48px;
-      padding: 0 12px;
-      flex-shrink: 0;
+      min-height: calc(48px + var(--sat));
+      padding: var(--sat) calc(12px + var(--sar)) 0 calc(12px + var(--sal));
       background: rgba(8, 8, 8, 0.85);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
       z-index: 100;
       gap: 8px;
+      transform: translateY(0);
+      transition: transform var(--transition-slow), opacity var(--transition-slow);
+    }
+
+    .toolbar.hidden {
+      transform: translateY(-100%);
+      opacity: 0;
+      pointer-events: none;
     }
 
     .toolbar-left,
@@ -208,8 +233,8 @@
 
     .reader-toast {
       position: fixed;
-      top: 16px;
-      right: 16px;
+      top: calc(16px + var(--sat));
+      right: calc(16px + var(--sar));
       z-index: 1200;
       max-width: 320px;
       padding: 10px 14px;
@@ -330,8 +355,8 @@
        主阅读区域
        ========================================================== */
     .reader-area {
-      flex: 1;
-      position: relative;
+      position: absolute;
+      inset: 0;
       overflow: hidden;
       background: var(--surface);
     }
@@ -359,7 +384,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 24px 0;
+      padding: calc(24px + var(--sat)) 0 calc(24px + var(--sab));
       gap: 16px;
       background: #1a1a1a;
     }
@@ -388,7 +413,7 @@
       width: 100%;
       height: 100%;
       overflow-y: auto;
-      padding: 48px 80px;
+      padding: calc(48px + var(--sat)) calc(80px + var(--sar)) calc(48px + var(--sab)) calc(80px + var(--sal));
       font-family: var(--font-reading);
       font-size: 18px;
       line-height: 1.85;
@@ -436,7 +461,7 @@
       top: 0;
       right: 0;
       width: 300px;
-      height: 100vh;
+      height: 100dvh;
       background: var(--surface);
       border-left: 1px solid var(--border);
       z-index: 200;
@@ -454,7 +479,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 16px 20px;
+      padding: calc(16px + var(--sat)) 20px 16px;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
     }
@@ -483,7 +508,7 @@
     .toc-list {
       flex: 1;
       overflow-y: auto;
-      padding: 12px 0;
+      padding: 12px 0 calc(12px + var(--sab));
     }
 
     .toc-item {
@@ -606,14 +631,15 @@
     @media (max-width: 800px) {
       .toolbar-subtitle { display: none; }
       .toc-sidebar { width: 280px; }
-      .txt-reader { padding: 32px 24px; font-size: 16px; }
+      .txt-reader { padding: calc(32px + var(--sat)) 24px calc(32px + var(--sab)); font-size: 16px; }
     }
 
     @media (max-width: 480px) {
-      .toolbar { padding: 0 8px; }
+      .toolbar { padding: var(--sat) calc(8px + var(--sar)) 0 calc(8px + var(--sal)); }
       .toolbar-center { display: none; }
       .toc-sidebar { width: 100%; }
-      .pdf-container { padding: 8px 0; gap: 8px; }
+      .pdf-container { padding: calc(8px + var(--sat)) 0 calc(8px + var(--sab)); gap: 8px; }
+      .txt-reader { padding: calc(24px + var(--sat)) 16px calc(24px + var(--sab)); }
     }
 
     /* ==========================================================
@@ -718,7 +744,7 @@
     .settings-content {
       flex: 1;
       overflow-y: auto;
-      padding: 20px 24px 32px;
+      padding: 20px 24px calc(32px + var(--sab));
     }
 
     .settings-content::-webkit-scrollbar { width: 4px; }
@@ -810,10 +836,13 @@
 
     @media (max-width: 860px) {
       .settings-modal {
+        top: 0;
+        left: 0;
+        transform: none;
         width: 100%;
-        height: 100%;
+        height: 100dvh;
         max-width: 100vw;
-        max-height: 100vh;
+        max-height: 100dvh;
         border-radius: 0;
       }
     }
