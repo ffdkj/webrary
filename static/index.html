@@ -2,12 +2,21 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
   <title>BookReader - 书架</title>
+  <meta name="theme-color" content="#050816">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Webrary">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
+  <script src="/js/pwa.js" defer></script>
 </head>
 <body>
 
@@ -162,6 +171,13 @@
           <span class="header-badge" id="totalBookCount">0</span>
         </div>
         <div class="header-actions">
+          <!-- PWA 安装按钮（支持安装的浏览器才会显示） -->
+          <button class="icon-btn" id="pwaInstallBtn" title="安装应用" style="display:none;">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3v10m0 0l-4-4m4 4l4-4"></path>
+              <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"></path>
+            </svg>
+          </button>
           <!-- 搜索按钮 -->
           <button class="icon-btn" id="searchBtn" title="搜索">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">

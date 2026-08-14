@@ -65,6 +65,7 @@
   function $(sel) { return document.querySelector(sel); }
 
   var dom = {
+    toolbar: $('#toolbar'),
     toolbarTitle: $('#toolbarTitle'),
     toolbarAuthor: $('#toolbarAuthor'),
     readerArea: $('#readerArea'),
@@ -105,6 +106,7 @@
   // 隐藏加载覆盖层
   function hideLoading() {
     dom.loadingOverlay.classList.add('hidden');
+    scheduleToolbarHide();
   }
 
   // 显示加载覆盖层
@@ -112,6 +114,49 @@
     if (!msg) msg = '加载中...';
     dom.loadingOverlay.classList.remove('hidden');
     dom.loadingOverlay.querySelector('.loading-text').textContent = msg;
+  }
+
+  /* ================================================================
+     沉浸式工具栏 — 移动端自动隐藏，点击阅读区中央切换
+     ================================================================ */
+  var toolbarIdleTimer = null;
+
+  function isMobileLike() {
+    var coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    var touch = navigator.maxTouchPoints > 0;
+    return (coarse || touch) && window.innerWidth <= 1024;
+  }
+
+  function setToolbarHidden(hidden) {
+    if (!dom.toolbar) return;
+    dom.toolbar.classList.toggle('hidden', !!hidden);
+  }
+
+  function cancelToolbarHide() {
+    if (toolbarIdleTimer) {
+      window.clearTimeout(toolbarIdleTimer);
+      toolbarIdleTimer = null;
+    }
+  }
+
+  function scheduleToolbarHide() {
+    cancelToolbarHide();
+    if (!isMobileLike()) return;
+    if (dom.tocSidebar.classList.contains('open') || dom.settingsOverlay.classList.contains('open')) return;
+    toolbarIdleTimer = window.setTimeout(function () {
+      setToolbarHidden(true);
+      toolbarIdleTimer = null;
+    }, 3500);
+  }
+
+  function toggleToolbar() {
+    var hidden = dom.toolbar.classList.contains('hidden');
+    setToolbarHidden(!hidden);
+    if (hidden) {
+      scheduleToolbarHide();
+    } else {
+      cancelToolbarHide();
+    }
   }
 
   // 显示错误信息
@@ -236,12 +281,15 @@
     dom.settingsOverlay.classList.add('open');
     dom.settingsModal.style.display = '';
     applySettingsToUI();
+    setToolbarHidden(false);
+    cancelToolbarHide();
   }
 
   // 关闭设置面板
   function closeSettings() {
     dom.settingsOverlay.classList.remove('open');
     dom.settingsModal.style.display = 'none';
+    scheduleToolbarHide();
   }
 
   // 切换设置面板显示/隐藏
@@ -314,12 +362,15 @@
   function openToc() {
     dom.tocSidebar.classList.add('open');
     dom.tocOverlay.classList.add('open');
+    setToolbarHidden(false);
+    cancelToolbarHide();
   }
 
   // 关闭目录侧边栏
   function closeToc() {
     dom.tocSidebar.classList.remove('open');
     dom.tocOverlay.classList.remove('open');
+    scheduleToolbarHide();
   }
 
   // 切换目录侧边栏显示/隐藏
@@ -1621,7 +1672,12 @@
     if (sel && !sel.isCollapsed) return;
     var rect = dom.readerArea.getBoundingClientRect();
     var dir = pageDirectionFromClick(e.clientX - rect.left, rect.width);
-    if (dir !== null) doPage(dir);
+    if (dir !== null) {
+      doPage(dir);
+      scheduleToolbarHide();
+    } else {
+      toggleToolbar();
+    }
   }
 
   function handleEpubClick(e) {
@@ -1638,7 +1694,12 @@
     if (typeof e.screenX !== 'number') return;
     var x = e.screenX - viewportLeft - rect.left;
     var dir = pageDirectionFromClick(x, rect.width);
-    if (dir !== null) doPage(dir);
+    if (dir !== null) {
+      doPage(dir);
+      scheduleToolbarHide();
+    } else {
+      toggleToolbar();
+    }
   }
 
   function bindEpubTapListeners() {
@@ -1723,6 +1784,11 @@
     dom.settingsBtn.addEventListener('click', toggleSettings);
     dom.settingsOverlay.addEventListener('click', closeSettings);
     dom.settingsClose.addEventListener('click', closeSettings);
+
+    // 工具栏交互后重置自动隐藏计时
+    dom.toolbar.addEventListener('click', function () {
+      scheduleToolbarHide();
+    }, true);
 
     // 阅读模式选择
     dom.readingModeGroup.addEventListener('click', function (e) {
