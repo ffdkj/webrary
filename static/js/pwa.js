@@ -14,7 +14,10 @@
 
   function updateInstallButton() {
     if (!installBtn) return;
-    var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    var standalone = window.matchMedia && (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.matchMedia('(display-mode: fullscreen)').matches
+    );
     installBtn.style.display = deferredPrompt && !standalone ? 'inline-flex' : 'none';
   }
 

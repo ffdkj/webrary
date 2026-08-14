@@ -1,4 +1,4 @@
-const CACHE_NAME = 'webrary-shell-v1';
+const CACHE_NAME = 'webrary-shell-v2';
 
 const PRECACHE_URLS = [
   '/',

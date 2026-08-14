@@ -1491,6 +1491,18 @@
     navigateTo('detail', bookData);
   }
 
+  function openReaderPage(url) {
+    var isStandalone = window.matchMedia && (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.matchMedia('(display-mode: fullscreen)').matches
+    );
+    if (isStandalone) {
+      window.location.assign(url);
+    } else {
+      window.open(url, '_blank');
+    }
+  }
+
   // 处理阅读按钮点击→打开阅读器
   function handleReadBook(bookId) {
     const card = document.querySelector(`.book-card[data-book-id="${bookId}"]`);
@@ -1504,7 +1516,7 @@
       const title = encodeURIComponent(card.dataset.title || '');
       const author = encodeURIComponent(card.dataset.author || '');
       const ext = encodeURIComponent(card.dataset.extension || '');
-      window.open(`/reader.html?bookId=${entityBookId}&title=${title}&author=${author}&ext=${ext}`, '_blank');
+      openReaderPage(`/reader.html?bookId=${entityBookId}&title=${title}&author=${author}&ext=${ext}`);
       return;
     }
 
@@ -2351,7 +2363,7 @@
       const title = encodeURIComponent(book.title || '');
       const author = encodeURIComponent(book.author || '');
       const ext = encodeURIComponent(book.extension || '');
-      window.open(`/reader.html?bookId=${entityId}&title=${title}&author=${author}&ext=${ext}`, '_blank');
+      openReaderPage(`/reader.html?bookId=${entityId}&title=${title}&author=${author}&ext=${ext}`);
     } else {
       showToast('无法打开此书', 'error');
     }
@@ -2381,7 +2393,7 @@
       const title = encodeURIComponent(currentBook.title || '');
       const author = encodeURIComponent(currentBook.author || '');
       const ext = encodeURIComponent(currentBook.extension || '');
-      window.open(`/reader.html?bookId=${entityId}&title=${title}&author=${author}&ext=${ext}`, '_blank');
+      openReaderPage(`/reader.html?bookId=${entityId}&title=${title}&author=${author}&ext=${ext}`);
     } else {
       showToast('请先从Z-Library下载此书后再阅读', 'error');
     }
@@ -2914,9 +2926,8 @@
       const title = encodeURIComponent(book.title || '');
       const author = encodeURIComponent(book.author || '');
       const ext = encodeURIComponent(book.extension || '');
-      window.open(
-        `/reader.html?bookId=${entityId}&title=${title}&author=${author}&ext=${ext}&tocHref=${encodeURIComponent(href)}`,
-        '_blank'
+      openReaderPage(
+        `/reader.html?bookId=${entityId}&title=${title}&author=${author}&ext=${ext}&tocHref=${encodeURIComponent(href)}`
       );
     });
 
