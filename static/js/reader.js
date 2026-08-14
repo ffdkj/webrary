@@ -511,6 +511,10 @@
     popup.style.top = y + 'px';
   }
 
+  function isHighlightPopupOpen() {
+    return dom.highlightPopup && dom.highlightPopup.style.display === 'flex';
+  }
+
   function hideHighlightPopup() {
     if (dom.highlightPopup.style.display === 'none') return;
     dom.highlightPopup.style.display = 'none';
@@ -696,7 +700,7 @@
     });
     txtReader.addEventListener('scroll', hideHighlightPopup, true);
     document.addEventListener('selectionchange', function () {
-      if (dom.highlightPopup.style.display === 'none') return;
+      if (!isHighlightPopupOpen()) return;
       var info = txtSelectionOffsets(txtReader);
       if (info) pendingHighlight = info;
     });
@@ -825,7 +829,7 @@
         maybeShowEpubPopup(content);
       });
       doc.addEventListener('selectionchange', function () {
-        if (dom.highlightPopup.style.display === 'none') return;
+        if (!isHighlightPopupOpen()) return;
         var sel = doc.getSelection ? doc.getSelection() : null;
         if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
         var range = sel.getRangeAt(0);
@@ -1680,7 +1684,7 @@
   function handleReaderAreaClick(e) {
     if (currentFormat === 'epub' || e.defaultPrevented || isInteractiveElement(e.target)) return;
     if (Date.now() - lastSwipeAt < 600 || Date.now() - lastTouchTapAt < 400) return;
-    if (dom.highlightPopup.style.display !== 'none' || Date.now() - popupHiddenAt < 300) return;
+    if (isHighlightPopupOpen() || Date.now() - popupHiddenAt < 300) return;
     if (currentFormat === 'pdf' && Date.now() - pdfToggleAt < 600) return;
     var sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;
@@ -1690,7 +1694,7 @@
   function handleEpubClick(e) {
     if (e.defaultPrevented || isInteractiveElement(e.target)) return;
     if (Date.now() - lastSwipeAt < 600 || Date.now() - lastTouchTapAt < 400) return;
-    if (dom.highlightPopup.style.display !== 'none' || Date.now() - popupHiddenAt < 300) return;
+    if (isHighlightPopupOpen() || Date.now() - popupHiddenAt < 300) return;
     var doc = e.currentTarget && e.currentTarget.nodeType === 9
       ? e.currentTarget
       : (e.target.ownerDocument || document);
@@ -1727,7 +1731,7 @@
     target.addEventListener('touchstart', function (e) {
       clearSwipe();
       if (dom.tocSidebar.classList.contains('open') || dom.settingsOverlay.classList.contains('open')) return;
-      if (dom.highlightPopup.style.display !== 'none') return;
+      if (isHighlightPopupOpen()) return;
       if (isInteractiveElement(e.target)) return;
       var touch = e.touches && e.touches[0];
       if (!touch) return;
@@ -1784,7 +1788,7 @@
       content.document.addEventListener('touchstart', function (e) {
         tapStart = null;
         if (dom.tocSidebar.classList.contains('open') || dom.settingsOverlay.classList.contains('open')) return;
-        if (dom.highlightPopup.style.display !== 'none') return;
+        if (isHighlightPopupOpen()) return;
         if (isInteractiveElement(e.target)) return;
         var touch = e.touches && e.touches[0];
         if (!touch) return;
@@ -2011,6 +2015,7 @@
   // 启动阅读器：加载设置→应用字体→绑定事件→初始化阅读器
   loadSettings();
   applyFontSize();
+  hideHighlightPopup();
   bindEvents();
   init();
 })();
