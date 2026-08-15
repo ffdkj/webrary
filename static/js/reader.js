@@ -1695,31 +1695,6 @@
     handleReaderPoint(e.clientX);
   }
 
-  function handleEpubClick(e) {
-    if (e.defaultPrevented || isInteractiveElement(e.target)) return;
-    if (Date.now() - lastSwipeAt < 600 || Date.now() - lastTouchTapAt < 400) return;
-    if (isHighlightPopupOpen() || Date.now() - popupHiddenAt < 300) return;
-    var doc = e.currentTarget && e.currentTarget.nodeType === 9
-      ? e.currentTarget
-      : (e.target.ownerDocument || document);
-    var sel = doc.getSelection ? doc.getSelection() : null;
-    if (sel && sel.rangeCount > 0 && !sel.isCollapsed) return;
-    var rect = dom.readerArea.getBoundingClientRect();
-    var x = null;
-    if (typeof e.clientX === 'number') {
-      var frameEl = e.view && e.view.frameElement ? e.view.frameElement : null;
-      var frameRect = frameEl ? frameEl.getBoundingClientRect()
-        : (dom.viewerDiv ? dom.viewerDiv.getBoundingClientRect() : { left: 0 });
-      x = frameRect.left + e.clientX - rect.left;
-    } else if (typeof e.screenX === 'number') {
-      var topWin = window.top || window;
-      var viewportLeft = topWin.screenX + ((topWin.outerWidth || 0) - (topWin.innerWidth || 0));
-      x = e.screenX - viewportLeft - rect.left;
-    }
-    if (x === null) return;
-    handleReaderPoint(x);
-  }
-
   var swipeStart = null;
   var swipeTriggered = false;
 
@@ -1811,63 +1786,6 @@
   function bindEpubTapListeners() {
     if (!viewer || !viewer.rendition) return;
     ensureEpubTapOverlay();
-    var contents;
-    try {
-      contents = viewer.rendition.getContents();
-    } catch (e) {
-      contents = [];
-    }
-    (contents || []).forEach(function (content) {
-      try {
-        if (!content || !content.document || content.document.__webraryTapBound) return;
-        content.document.__webraryTapBound = true;
-
-        if (content.document.documentElement) {
-          content.document.documentElement.style.touchAction = 'pan-y';
-        }
-        attachSwipeHandlers(content.document);
-        content.document.addEventListener('click', handleEpubClick, true);
-
-        var tapStart = null;
-        content.document.addEventListener('touchstart', function (e) {
-          tapStart = null;
-          if (dom.tocSidebar.classList.contains('open') || dom.settingsOverlay.classList.contains('open')) return;
-          if (isHighlightPopupOpen()) return;
-          if (isInteractiveElement(e.target)) return;
-          var touch = e.touches && e.touches[0];
-          if (!touch) return;
-          tapStart = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-        }, true);
-        content.document.addEventListener('touchmove', function (e) {
-          if (!tapStart) return;
-          var touch = e.touches && e.touches[0];
-          if (!touch) return;
-          if (Math.abs(touch.clientX - tapStart.x) > 14 || Math.abs(touch.clientY - tapStart.y) > 14) {
-            tapStart = null;
-          }
-        }, true);
-        content.document.addEventListener('touchend', function (e) {
-          if (!tapStart) return;
-          var duration = Date.now() - tapStart.time;
-          var touch = e.changedTouches && e.changedTouches[0];
-          if (!touch || duration > 450 || Date.now() - lastSwipeAt < 600) {
-            tapStart = null;
-            return;
-          }
-          var sel = content.document.getSelection ? content.document.getSelection() : null;
-          if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
-            tapStart = null;
-            return;
-          }
-          tapStart = null;
-          var frameRect = content.iframe ? content.iframe.getBoundingClientRect() : { left: 0 };
-          lastTouchTapAt = Date.now();
-          handleReaderPoint(frameRect.left + touch.clientX - dom.readerArea.getBoundingClientRect().left);
-        }, true);
-      } catch (e) {
-        console.warn('epub tap binding failed:', e);
-      }
-    });
   }
 
   /* ================================================================
