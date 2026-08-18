@@ -13,3 +13,6 @@ Thumbs.db
 .idea/
 *.iml
 .vscode/
+
+# Local dev dependencies (bootstrap pip --target)
+.pylibs/

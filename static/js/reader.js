@@ -45,6 +45,76 @@
   var txtPressPoint = null;     // TXT 长按触摸点
   var readerSettings = { readingMode: 'single', pageFit: 'width', preloadCount: 3 };  // 阅读器设置
 
+  /* ================================================================
+     OPFS 离线阅读 — 主线程直读 Origin Private File System
+     ================================================================ */
+  var OPFS = (typeof window !== 'undefined' && window.WebraryOPFS) ? window.WebraryOPFS : null;
+  var txtPagination = (typeof window !== 'undefined' && window.WebraryTxt) ? window.WebraryTxt : null;
+  var OFFLINE_ENABLED = !!(OPFS && OPFS.isSupported);
+  var offlineActive = false;   // 当前是否正在读取 OPFS 本地缓存
+  var txtOffline = null;       // TXT 离线数据 { text, lines, pages, totalPages, toc }
+
+  // 书籍扩展名（统一小写，去掉点号）
+  function getBookExt() {
+    var ext = (metadata && metadata.extension) || PARAM_EXT || '';
+    return String(ext).toLowerCase().replace(/^\./, '');
+  }
+
+  // 当前书籍元数据（用于 OPFS 索引）
+  function getBookMeta() {
+    return {
+      title: (metadata && metadata.title) || PARAM_TITLE || '未命名书籍',
+      author: (metadata && metadata.author) || PARAM_AUTHOR || '',
+      extension: getBookExt() || 'bin'
+    };
+  }
+
+  // 将当前书籍的 /stream 流写入 OPFS（带进度提示），失败静默降级
+  function cacheCurrentBook() {
+    if (!OPFS || !OPFS.isSupported) {
+      showToast('当前浏览器不支持 OPFS 离线缓存');
+      return Promise.reject(new Error('OPFS unsupported'));
+    }
+    var ext = getBookExt();
+    if (ext === 'pdf') {
+      showToast('PDF 暂不支持离线缓存');
+      return Promise.reject(new Error('PDF not cacheable'));
+    }
+    showToast('正在缓存到本地…');
+    return OPFS.cacheBook(String(PARAM_BOOK_ID), getBookMeta(), {
+      onProgress: function (p) {
+        var total = p.total || 1;
+        var pct = Math.min(100, Math.round((p.loaded / total) * 100));
+        showToast('正在缓存到本地… ' + pct + '%');
+      }
+    }).then(function () {
+      showToast('已缓存，可离线阅读');
+      return true;
+    }).catch(function (err) {
+      showToast('缓存失败: ' + (err && err.message ? err.message : err));
+      throw err;
+    });
+  }
+
+  // 更新工具栏上的离线徽标与缓存按钮状态
+  function updateOfflineUi() {
+    var badge = document.getElementById('offlineBadge');
+    if (badge) {
+      badge.style.display = offlineActive ? 'inline-flex' : 'none';
+      badge.textContent = offlineActive ? '离线缓存' : '';
+    }
+    var cacheBtn = document.getElementById('cacheBookBtn');
+    if (!cacheBtn) return;
+    var ext = getBookExt();
+    var cacheable = ext !== 'pdf' && ext !== '';
+    cacheBtn.style.display = cacheable ? 'inline-flex' : 'none';
+    if (!OPFS) return;
+    OPFS.isCached(String(PARAM_BOOK_ID)).then(function (cached) {
+      cacheBtn.classList.toggle('active', !!cached);
+      cacheBtn.title = cached ? '已缓存到本地，点击删除离线缓存' : '缓存到本地（离线阅读）';
+    }).catch(function () { /* ignore */ });
+  }
+
   var HL_COLORS = {
     yellow: 'rgba(255, 213, 79, 0.55)',
     green: 'rgba(129, 199, 132, 0.55)',
@@ -238,11 +308,23 @@
       return; // TXT scroll — skip server sync
     }
 
+    var payload = { currentPage: cp, totalPages: tp, finished: finished };
+
+    if (navigator.onLine === false) {
+      if (window.WebraryPWA) window.WebraryPWA.enqueueProgress(PARAM_BOOK_ID, payload);
+      return;
+    }
+
     fetch('/api/books/' + PARAM_BOOK_ID + '/progress', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ currentPage: cp, totalPages: tp, finished: finished })
-    }).catch(function () { /* ignore */ });
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+    }).catch(function () {
+      // 在线但请求失败（服务端暂不可达）：排队待补传
+      if (window.WebraryPWA) window.WebraryPWA.enqueueProgress(PARAM_BOOK_ID, payload);
+    });
   }
 
   // 从本地存储加载上次阅读进度
@@ -944,6 +1026,43 @@
   /* ================================================================
      epub.js Viewer — EPUB/MOBI/AZW3/FB2 格式阅读器
      ================================================================ */
+  // 获取 EPUB ArrayBuffer：优先 OPFS 本地缓存，否则网络拉取并后台写缓存
+  function getEpubBuffer() {
+    if (!OPFS || !OPFS.isSupported) {
+      return fetch(STREAM_URL).then(function (resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.arrayBuffer();
+      });
+    }
+    return OPFS.getCached(String(PARAM_BOOK_ID)).then(function (cached) {
+      if (cached && cached.file) {
+        offlineActive = true;
+        return cached.file.arrayBuffer();
+      }
+      return fetch(STREAM_URL).then(function (resp) {
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        // 后台流式写入 OPFS（不阻塞打开），失败仅告警
+        OPFS.cacheResponse(String(PARAM_BOOK_ID), getBookMeta(), resp.clone())
+          .then(function () {
+            offlineActive = false;
+          })
+          .catch(function (err) {
+            console.warn('OPFS cache failed:', err);
+          });
+        return resp.arrayBuffer();
+      }).catch(function (err) {
+        // 网络失败时回退尝试 OPFS（比如刚被清理后再次读取）
+        return OPFS.getCached(String(PARAM_BOOK_ID)).then(function (again) {
+          if (again && again.file) {
+            offlineActive = true;
+            return again.file.arrayBuffer();
+          }
+          throw err;
+        });
+      });
+    });
+  }
+
   // 初始化 epub.js 阅读器
   function initEpub() {
     if (typeof ePub === 'undefined') {
@@ -956,11 +1075,8 @@
     dom.pageIndicator.style.display = 'none';
 
     // Fetch EPUB as ArrayBuffer — epub.js reads from memory without HTTP requests
-    return fetch(STREAM_URL)
-      .then(function (resp) {
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        return resp.arrayBuffer();
-      })
+    // 优先 OPFS 本地缓存（离线可用），否则网络拉取并后台缓存
+    return getEpubBuffer()
       .then(function (buffer) {
         var book = ePub(buffer);
         var rendition = book.renderTo('viewer', {
@@ -997,6 +1113,7 @@
                 tocData = list.map(function (it) {
                   return { label: it.title || '', href: it.href || '', depth: it.level || 0 };
                 });
+                if (OPFS && OPFS.isSupported) OPFS.saveToc(String(PARAM_BOOK_ID), list);
               } else {
                 tocData = [];
               }
@@ -1048,6 +1165,22 @@
             } catch (e) {}
             renderToc();
           });
+
+          // 离线模式：提示来源；若网络 TOC 不可用，则从 OPFS 目录快照读取
+          if (offlineActive) {
+            showToast('离线模式 · 已从本地缓存加载');
+            updateOfflineUi();
+          }
+          if (OPFS && OPFS.isSupported && tocData.length === 0) {
+            OPFS.getToc(String(PARAM_BOOK_ID)).then(function (savedToc) {
+              if (savedToc && savedToc.length) {
+                tocData = savedToc.map(function (it) {
+                  return { label: it.title || '', href: it.href || '', depth: it.level || 0 };
+                });
+                renderToc();
+              }
+            });
+          }
 
           // Navigate to chapter if specified via URL param (user-initiated, takes priority)
           if (PARAM_TOC_HREF) {
@@ -1440,7 +1573,7 @@
   /* ================================================================
      TXT Viewer — TXT 文本阅读器
      ================================================================ */
-  // 初始化 TXT 阅读器
+  // 初始化 TXT 阅读器：优先读取 OPFS 本地缓存（离线可用），否则走在线接口
   function initTxt() {
     cleanupPreviousViewer();
     dom.viewerDiv.style.display = 'none';
@@ -1451,6 +1584,79 @@
     txtReader.style.fontSize = fontSize + 'px';
     dom.readerArea.appendChild(txtReader);
 
+    txtOffline = null;
+    offlineActive = false;
+
+    if (OPFS && OPFS.isSupported && txtPagination) {
+      return OPFS.getCached(String(PARAM_BOOK_ID)).then(function (cached) {
+        if (!cached || !cached.file) return initTxtOnline(txtReader);
+        return cached.file.text().then(function (text) {
+          var built = txtPagination.buildPages(text);
+          offlineActive = true;
+          txtOffline = {
+            text: text,
+            lines: built.lines,
+            pages: built.pages,
+            totalPages: built.totalPages,
+            toc: built.toc
+          };
+          txtTotalPages = built.totalPages;
+          txtPageNum = 1;
+          return initTxtOfflineView();
+        });
+      }).catch(function (err) {
+        console.warn('OPFS TXT offline load failed, fallback to online:', err);
+        txtOffline = null;
+        offlineActive = false;
+        return initTxtOnline(txtReader);
+      });
+    }
+    return initTxtOnline(txtReader);
+  }
+
+  // TXT 离线视图：从本地构建的 pages/toc 渲染
+  function initTxtOfflineView() {
+    return (OPFS && OPFS.isSupported ? OPFS.getToc(String(PARAM_BOOK_ID)) : Promise.resolve(null))
+      .then(function (savedToc) {
+        if (savedToc && savedToc.length) {
+          tocData = savedToc.map(function (it, i) {
+            return { label: it.title || '', href: '#ch-' + i, depth: it.level || 0, page: it.startPage || i + 1 };
+          });
+        } else {
+          tocData = (txtOffline.toc || []).map(function (it, i) {
+            return { label: it.title || '', href: '#ch-' + i, depth: it.level || 0, page: it.startPage || i + 1 };
+          });
+        }
+        renderToc();
+      })
+      .then(function () {
+        highlights = [];
+        renderHighlightsList();
+        dom.pageDivider.style.display = '';
+        dom.pagePrevBtn.style.display = '';
+        dom.pageNextBtn.style.display = '';
+        dom.pageIndicator.style.display = 'inline-block';
+        bindTxtHighlightHandlers(document.getElementById('txtReader'));
+        return renderTxtPage(txtPageNum);
+      })
+      .then(function () {
+        hideLoading();
+        viewer = { type: 'txt' };
+        showToast('离线模式 · 已从本地缓存加载');
+        updateOfflineUi();
+      })
+      .catch(function (err) {
+        var reader = document.getElementById('txtReader');
+        if (reader) {
+          reader.innerHTML = '<p style="color:var(--danger);text-align:center;padding:40px;">离线加载失败: ' + escapeHtml(err.message) + '</p>';
+        }
+        hideLoading();
+        viewer = { type: 'txt' };
+      });
+  }
+
+  // TXT 在线视图：服务端分页接口（原有逻辑），网络可用时后台把整本写入 OPFS
+  function initTxtOnline(txtReader) {
     return Promise.all([
       fetch(TXT_INFO_URL).then(function (r) { return r.json(); }),
       fetch(TOC_URL).then(function (r) { return r.json(); }),
@@ -1505,6 +1711,32 @@
     }).then(function () {
       hideLoading();
       viewer = { type: 'txt' };
+      // 在线时后台把整本 TXT 写入 OPFS，供下次离线阅读；同时保存目录快照
+      if (OPFS && OPFS.isSupported) {
+        if (tocData && tocData.length) {
+          var savedToc = tocData.map(function (it) {
+            return {
+              title: it.label || '',
+              chapterIndex: 0,
+              startPage: it.page || null,
+              href: null,
+              level: it.depth || 0
+            };
+          });
+          OPFS.saveToc(String(PARAM_BOOK_ID), savedToc);
+        }
+        fetch(STREAM_URL)
+          .then(function (resp) {
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.text();
+          })
+          .then(function (text) {
+            return OPFS.cacheText(String(PARAM_BOOK_ID), text, getBookMeta());
+          })
+          .catch(function (err) {
+            console.warn('OPFS TXT cache failed:', err);
+          });
+      }
     }).catch(function (err) {
       txtReader.innerHTML = '<p style="color:var(--danger);text-align:center;padding:40px;">加载失败: ' + escapeHtml(err.message) + '</p>';
       hideLoading();
@@ -1512,12 +1744,13 @@
     });
   }
 
-  // 渲染 TXT 指定页码
+  // 渲染 TXT 指定页码（离线优先走本地分页）
   function renderTxtPage(page) {
     page = Math.min(Math.max(1, page), Math.max(1, txtTotalPages));
     txtPageNum = page;
     var txtReader = document.getElementById('txtReader');
     if (!txtReader) return Promise.resolve();
+    if (txtOffline) return renderOfflineTxtPage(txtReader, page);
     return fetch(txtPageUrl(page))
       .then(function (resp) {
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -1534,6 +1767,21 @@
         updateTxtNavState();
         saveProgress({ page: txtPageNum, totalPages: txtTotalPages });
       });
+  }
+
+  // 离线 TXT 翻页渲染（本地构建的页码与服务端算法一致）
+  function renderOfflineTxtPage(txtReader, page) {
+    var content = txtPagination
+      ? txtPagination.getPageText(txtOffline.lines, txtOffline.pages, page)
+      : null;
+    if (content == null) return Promise.resolve();
+    var parsed = parseTxtToHtml(content);
+    txtReader.innerHTML = parsed.html;
+    applyTxtPageHighlights(txtReader, txtPageNum);
+    txtReader.scrollTop = 0;
+    updateTxtNavState();
+    saveProgress({ page: txtPageNum, totalPages: txtOffline.totalPages });
+    return Promise.resolve();
   }
 
   // 更新 TXT 翻页按钮状态
@@ -1596,6 +1844,13 @@
       return;
     }
 
+    // 恢复在线后先补传离线期间排队的阅读进度
+    // （pwa.js 为 defer 脚本，DOMContentLoaded 后才可用，故用事件监听兜底）
+    if (window.WebraryPWA) window.WebraryPWA.flushProgress();
+    window.addEventListener('DOMContentLoaded', function () {
+      if (window.WebraryPWA) window.WebraryPWA.flushProgress();
+    });
+
     showLoading('加载书籍信息...');
 
     // Fetch metadata
@@ -1624,6 +1879,8 @@
 
         currentFormat = getFormat(ext);
         showLoading('加载中...');
+
+        updateOfflineUi();
 
         switch (currentFormat) {
           case 'epub':
@@ -1864,6 +2121,29 @@
     dom.toolbar.addEventListener('click', function () {
       scheduleToolbarHide();
     }, true);
+
+    // 缓存到本地 / 删除离线缓存按钮
+    var cacheBookBtn = document.getElementById('cacheBookBtn');
+    if (cacheBookBtn) {
+      cacheBookBtn.addEventListener('click', function () {
+        if (!OPFS || !OPFS.isSupported) {
+          showToast('当前浏览器不支持 OPFS 离线缓存');
+          return;
+        }
+        OPFS.isCached(String(PARAM_BOOK_ID)).then(function (cached) {
+          if (cached) {
+            OPFS.removeBook(String(PARAM_BOOK_ID)).then(function () {
+              showToast('已删除离线缓存');
+              updateOfflineUi();
+            }).catch(function (err) {
+              showToast('删除失败: ' + (err && err.message ? err.message : err));
+            });
+          } else {
+            cacheCurrentBook().catch(function () { /* toast already shown */ });
+          }
+        }).catch(function () { /* ignore */ });
+      });
+    }
 
     // 阅读模式选择
     dom.readingModeGroup.addEventListener('click', function (e) {

@@ -5,6 +5,9 @@
 (function () {
   'use strict';
 
+  // OPFS 离线缓存库（static/js/opfs-cache.js 提供，PDF 不参与）
+  const OPFS = (typeof window !== 'undefined' && window.WebraryOPFS) ? window.WebraryOPFS : null;
+
   /* ================================================================
      State
      ================================================================ */
@@ -14,6 +17,7 @@
     activeShelfId: null,             // 当前选中的书架ID
     activeShelfName: '',             // 当前选中的书架名称
     books: [],                       // 当前书架的书籍列表
+    cachedOffline: {},               // bookId(实体ID) → 已缓存标志
     totalBookCount: 0,               // 所有书架的总书籍数
     isLoggedIn: false,               // Z-Library 登录状态
     loading: false,                  // 是否正在加载中
@@ -513,6 +517,45 @@
     } catch {
       showToast('设置加载失败', 'error');
     }
+    renderOfflineCacheManager();
+  }
+
+  // 渲染“离线缓存管理”区块（OPFS）
+  async function renderOfflineCacheManager() {
+    const section = $('#offlineCacheManager');
+    if (!section) return;
+    if (!OPFS || !OPFS.isSupported) {
+      section.innerHTML = '<p class="text-muted">当前浏览器不支持 OPFS，无法离线缓存书籍（阅读 PDF 时该功能不可用）。</p>';
+      return;
+    }
+    section.innerHTML = '<div class="spinner spinner-sm"></div>';
+    try {
+      const [list, estimate] = await Promise.all([OPFS.listCached(), OPFS.getUsage()]);
+      const total = (list || []).reduce((s, c) => s + (c.size || 0), 0);
+      const quota = estimate.quota || 0;
+      const usage = estimate.usage || 0;
+      section.innerHTML = `
+        <div class="offline-cache-summary">
+          <span>已缓存 <b>${list.length}</b> 本 · 共 ${formatFileSize(total)}</span>
+          <span class="text-muted">存储占用 ${formatFileSize(usage)} / ${formatFileSize(quota)}</span>
+        </div>
+        ${list.length
+          ? `<ul class="offline-cache-list">
+              ${list.map((c) => `
+                <li>
+                  <div class="offline-cache-item-main">
+                    <span class="offline-cache-title">${escapeHtml(c.title || '未命名书籍')}</span>
+                    <span class="offline-cache-meta">${escapeHtml((c.extension || '').toUpperCase())} · ${formatFileSize(c.size)} · ${new Date(c.cachedAt || Date.now()).toLocaleDateString()}</span>
+                  </div>
+                  <button class="btn btn-sm btn-danger" data-action="delete-cache" data-book-id="${escapeHtml(String(c.bookId))}">删除</button>
+                </li>`).join('')}
+            </ul>
+            <button class="btn btn-sm btn-danger" id="offlineClearAll">清除全部缓存</button>`
+          : '<p class="text-muted">暂无离线缓存。在书架卡片上点击“离线缓存”，或打开书籍后点击工具栏缓存按钮。</p>'}
+      `;
+    } catch (err) {
+      section.innerHTML = '<p class="text-muted">加载失败: ' + escapeHtml(err.message || err) + '</p>';
+    }
   }
 
   // 保存注册开关
@@ -618,6 +661,10 @@
         const badgeText = unread > 9999 ? '9999+' : unread > 0 ? String(unread) : '';
         const isFinished = book.isFinished || book.progress?.finished;
         const coverUrl = book.coverUrl || '';
+        // OPFS 离线缓存状态（仅非 PDF 且服务端有文件的书可缓存）
+        const ext = (book.extension || '').toLowerCase();
+        const isCacheable = !!(OPFS && OPFS.isSupported && OPFS.isCacheable(ext) && book.filePath);
+        const cachedOffline = !!(state.cachedOffline && state.cachedOffline[String(book.bookId || book.id)]);
 
         return `
          <div class="book-card"
@@ -638,6 +685,7 @@
               data-readonline-url="${escapeHtml(book.readOnlineUrl || '')}"
                data-has-file="${(book.filePath && book.filePath.length > 0) ? 'true' : 'false'}"
                data-filepath="${escapeHtml(book.filePath || '')}"
+               data-cached-offline="${cachedOffline ? 'true' : 'false'}"
               draggable="true">
           <div class="cover-wrapper">
             ${coverUrl
@@ -663,6 +711,15 @@
           <div class="book-title">${escapeHtml(book.title || '未命名')}</div>
           ${book.author ? `<div class="book-author">${escapeHtml(book.author)}</div>` : ''}
           <div class="book-actions" data-book-id="${book.id}">
+            ${isCacheable ? `
+            <button class="btn-cache-offline ${cachedOffline ? 'cached' : ''}"
+                    data-action="cache-offline" data-book-id="${book.id}"
+                    title="${cachedOffline ? '已缓存到本地，点击删除离线缓存' : '缓存到本地（离线阅读）'}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" stroke-linecap="round" stroke-linejoin="round">${cachedOffline
+                ? '<polyline points="20 6 9 17 4 12"/>'
+                : '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'}</svg>
+              ${cachedOffline ? '已缓存' : '离线缓存'}
+            </button>` : ''}
             <button class="btn-local-read ${book.filePath && book.filePath.length > 0 ? '' : 'disabled'}"
                     data-action="local-read" data-book-id="${book.id}"
                     ${book.filePath && book.filePath.length > 0 ? '' : 'disabled'}>
@@ -738,6 +795,7 @@
     showLoading();
     try {
       state.books = await fetchBooks(shelfId);
+      await refreshCachedOfflineStatus(state.books);
       if (state.currentPage === 'shelf') {
         renderBooks();
       }
@@ -747,6 +805,121 @@
       if (state.currentPage === 'shelf') renderBooks();
     }
     hideLoading();
+  }
+
+  /* ================================================================
+     OPFS Offline Cache — 离线缓存状态与操作
+     ================================================================ */
+  // 从 OPFS 索引刷新书架书籍的离线缓存状态
+  async function refreshCachedOfflineStatus(books) {
+    if (!OPFS || !OPFS.isSupported) return;
+    try {
+      const list = await OPFS.listCached();
+      const set = {};
+      list.forEach((c) => { set[String(c.bookId)] = c; });
+      state.cachedOffline = set;
+      (books || []).forEach((b) => {
+        if (set[String(b.bookId || b.id)]) b.cachedOffline = true;
+      });
+    } catch (e) {
+      console.warn('refreshCachedOfflineStatus failed:', e);
+    }
+  }
+
+  // 更新单张卡片的离线缓存 UI（按钮图标/文案/标题）
+  function refreshCardCacheUi(card, cached) {
+    if (!card) return;
+    card.dataset.cachedOffline = cached ? 'true' : 'false';
+    const btn = card.querySelector('.btn-cache-offline');
+    if (!btn) return;
+    btn.classList.toggle('cached', !!cached);
+    btn.title = cached ? '已缓存到本地，点击删除离线缓存' : '缓存到本地（离线阅读）';
+    btn.innerHTML = cached
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> 已缓存'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 离线缓存';
+  }
+
+  // 卡片上的“离线缓存”按钮：缓存或删除
+  async function handleCacheToggle(bookId) {
+    const card = document.querySelector(`.book-card[data-book-id="${bookId}"]`);
+    if (!card) return;
+    if (!OPFS || !OPFS.isSupported) {
+      showToast('当前浏览器不支持 OPFS 离线缓存', 'error');
+      return;
+    }
+    const entityId = card.dataset.bookBookid || bookId;
+    const ext = (card.dataset.extension || '').toLowerCase();
+    const cached = card.dataset.cachedOffline === 'true';
+
+    if (cached) {
+      try {
+        await OPFS.removeBook(String(entityId));
+        delete state.cachedOffline[String(entityId)];
+        refreshCardCacheUi(card, false);
+        showToast('已删除离线缓存', 'success');
+      } catch (err) {
+        showToast('删除失败: ' + (err && err.message ? err.message : err), 'error');
+      }
+      return;
+    }
+
+    if (ext === 'pdf') {
+      showToast('PDF 暂不支持离线缓存', 'error');
+      return;
+    }
+    if (card.dataset.hasFile !== 'true') {
+      showToast('服务端暂无该书文件，无法缓存', 'error');
+      return;
+    }
+
+    // 封面上的缓存进度条
+    let prog = card.querySelector('.cache-progress');
+    if (!prog) {
+      prog = document.createElement('div');
+      prog.className = 'cache-progress';
+      const fill = document.createElement('div');
+      fill.className = 'cache-progress-fill';
+      prog.appendChild(fill);
+      const coverWrapper = card.querySelector('.cover-wrapper');
+      if (coverWrapper) coverWrapper.appendChild(prog);
+    }
+    prog.style.display = '';
+    const fill = prog.querySelector('.cache-progress-fill');
+    const setPct = (p) => { if (fill) fill.style.width = Math.min(100, Math.max(0, p)) + '%'; };
+    setPct(0);
+
+    try {
+      await OPFS.cacheBook(String(entityId), {
+        title: card.dataset.title || '',
+        author: card.dataset.author || '',
+        extension: ext
+      }, {
+        onProgress: (p) => {
+          const total = p.total || 1;
+          setPct(Math.round((p.loaded / total) * 100));
+        }
+      });
+      state.cachedOffline[String(entityId)] = true;
+      refreshCardCacheUi(card, true);
+      showToast('已缓存，可离线阅读', 'success');
+    } catch (err) {
+      showToast('缓存失败: ' + (err && err.message ? err.message : err), 'error');
+    } finally {
+      prog.style.display = 'none';
+    }
+  }
+
+  // 右键菜单入口：payload 传实体 ID
+  async function handleCacheToggleFromMenu(payloadStr) {
+    let entityId;
+    try {
+      entityId = JSON.parse(payloadStr).id;
+    } catch (e) {
+      return;
+    }
+    const card = document.querySelector(`.book-card[data-book-bookid="${entityId}"]`);
+    if (!card) return;
+    await handleCacheToggle(card.dataset.bookId);
   }
 
   // 根据当前页面刷新内容
@@ -985,7 +1158,7 @@
 
   // 构建书籍右键菜单项
   function buildBookContextMenu(bookData) {
-    const { id, bookId, shelfId, title, author, extension, unread, finished, zlibId, hash } = bookData;
+    const { id, bookId, shelfId, title, author, extension, unread, finished, zlibId, hash, cached, hasFile } = bookData;
 
     const shelfSubmenu = state.shelves
       .filter((s) => s.id != shelfId)
@@ -1005,6 +1178,12 @@
     return [
       { label: '选择', icon: ICONS_SVG.select, action: 'select-book', payload: id },
       { label: '下载', icon: ICONS_SVG.download, action: 'download-book', payload: JSON.stringify({ localBookId: bookId, zlibId, hash }), submenu: formatsSubmenu },
+      ...(hasFile === true && !cached && !['pdf'].includes((extension || '').toLowerCase())
+        ? [{ label: '缓存到本地（离线阅读）', icon: ICONS_SVG.download, action: 'cache-offline', payload: JSON.stringify({ id: bookId }) }]
+        : []),
+      ...(cached === true
+        ? [{ label: '删除离线缓存', icon: ICONS_SVG.trash, action: 'uncache-offline', payload: JSON.stringify({ id: bookId }) }]
+        : []),
       { label: '标记为已读', icon: ICONS_SVG.check, action: 'mark-read', payload: JSON.stringify({ id: bookId, finished: true }) },
       { label: '标记为未读', icon: ICONS_SVG.eyeSlash, action: 'mark-unread', payload: JSON.stringify({ id: bookId, finished: false }) },
       ...(shelfSubmenu.length > 0
@@ -1040,6 +1219,8 @@
     switch (action) {
       case 'select-book': handleSelectBook(payload); break;
       case 'download-book': handleDownloadBook(payload); break;
+      case 'cache-offline': handleCacheToggleFromMenu(payload); break;
+      case 'uncache-offline': handleCacheToggleFromMenu(payload); break;
       case 'mark-read': handleMarkRead(JSON.parse(payload)); break;
       case 'mark-unread': handleMarkUnread(JSON.parse(payload)); break;
       case 'transfer-book': handleTransferBook(JSON.parse(payload)); break;
@@ -1126,6 +1307,11 @@
       // Full delete: remove file from disk + delete DB records
       try {
         await deleteBook(bookId);
+        // 顺带清理本机 OPFS 离线缓存
+        if (OPFS && OPFS.isSupported) {
+          OPFS.removeBook(String(bookId)).catch(() => {});
+          delete state.cachedOffline[String(bookId)];
+        }
         showToast('已彻底删除', 'success');
         await refreshAll();
       } catch (err) {
@@ -1558,6 +1744,8 @@
       finished: card.dataset.finished === 'true',
       zlibId: card.dataset.zlibId || '',
       hash: card.dataset.hash || '',
+      cached: card.dataset.cachedOffline === 'true',
+      hasFile: card.dataset.hasFile === 'true',
     };
 
     const menu = buildBookContextMenu(bookData);
@@ -1584,6 +1772,8 @@
       finished: card.dataset.finished === 'true',
       zlibId: card.dataset.zlibId || '',
       hash: card.dataset.hash || '',
+      cached: card.dataset.cachedOffline === 'true',
+      hasFile: card.dataset.hasFile === 'true',
     };
 
     const rect = btn.getBoundingClientRect();
@@ -2823,6 +3013,10 @@
         const btn = e.target.closest('.btn-local-read');
         handleReadBook(btn.dataset.bookId);
       }
+      if (e.target.closest('.btn-cache-offline')) {
+        const btn = e.target.closest('.btn-cache-offline');
+        handleCacheToggle(btn.dataset.bookId);
+      }
     });
 
     // 右键菜单
@@ -2930,6 +3124,36 @@
         `/reader.html?bookId=${entityId}&title=${title}&author=${author}&ext=${ext}&tocHref=${encodeURIComponent(href)}`
       );
     });
+
+    // 设置页 — 离线缓存管理（删除单个 / 清除全部）
+    const ocSection = $('#offlineCacheManager');
+    if (ocSection) {
+      ocSection.addEventListener('click', async (e) => {
+        const del = e.target.closest('[data-action="delete-cache"]');
+        if (del) {
+          const id = del.dataset.bookId;
+          try {
+            await OPFS.removeBook(String(id));
+            if (state.cachedOffline) delete state.cachedOffline[String(id)];
+            showToast('已删除离线缓存', 'success');
+          } catch (err) {
+            showToast('删除失败: ' + (err && err.message ? err.message : err), 'error');
+          }
+          renderOfflineCacheManager();
+          return;
+        }
+        if (e.target.id === 'offlineClearAll') {
+          try {
+            await OPFS.clearAll();
+            state.cachedOffline = {};
+            showToast('已清除全部离线缓存', 'success');
+          } catch (err) {
+            showToast('清除失败: ' + (err && err.message ? err.message : err), 'error');
+          }
+          renderOfflineCacheManager();
+        }
+      });
+    }
 
     // 详情页 — 继续阅读按钮
     dom.continueReadingBtn.addEventListener('click', handleDetailReadOnline);

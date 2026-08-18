@@ -1,4 +1,4 @@
-const CACHE_NAME = 'webrary-shell-v7';
+const CACHE_NAME = 'webrary-shell-v8';
 
 const PRECACHE_URLS = [
   '/',
@@ -8,6 +8,8 @@ const PRECACHE_URLS = [
   '/js/app.js',
   '/js/pwa.js',
   '/js/reader.js',
+  '/js/opfs-cache.js',
+  '/js/txt-pagination.js',
   '/vendor/jszip.min.js',
   '/vendor/epub.min.js',
   '/manifest.json',
@@ -38,6 +40,11 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+/**
+ * 离线书籍文件存储于 OPFS（Origin Private File System），
+ * 由主线程的 opfs-cache.js 负责读写，Service Worker 不直接干预，
+ * 以避免 SW 与页面存储分区不一致带来的读取失败。
+ */
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -52,16 +59,21 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      caches.match(request, { ignoreSearch: true }).then((cached) => {
-        if (cached) return cached;
-        return fetch(request).then((response) => {
+      fetch(request)
+        .then((response) => {
           if (response && response.ok) {
             const copy = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
           }
           return response;
-        });
-      })
+        })
+        .catch(() =>
+          // 离线时兜底：先命中精确缓存（ignoreSearch 匹配 reader.html 等），再退回首页
+          caches.match(request, { ignoreSearch: true }).then((cached) => {
+            if (cached) return cached;
+            return caches.match('/index.html');
+          })
+        )
     );
     return;
   }

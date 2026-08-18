@@ -687,6 +687,7 @@ img { display: block; max-width: 100%; }
 /* ---- Book Card Actions (Local/Online Read) ---- */
 .book-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
 }
@@ -1012,6 +1013,12 @@ select.form-input { cursor: pointer; }
   color: var(--text);
 }
 .btn-danger:hover { background: var(--danger-hover); }
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+}
 
 .btn-block { width: 100%; }
 
@@ -2267,4 +2274,143 @@ select.form-input { cursor: pointer; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ============================================================
+   PWA 离线功能 — OPFS 离线缓存 / 网络状态 / 设置页管理
+   ============================================================ */
+
+/* ---- 网络状态徽标（header） ---- */
+.net-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--success);
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  white-space: nowrap;
+  user-select: none;
+}
+.net-status.offline {
+  color: var(--warning);
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+.net-status-reader {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+/* ---- 书架卡片：离线缓存按钮 ---- */
+.btn-cache-offline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px dashed var(--border-light);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.btn-cache-offline:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(231, 199, 133, 0.06);
+}
+.btn-cache-offline.cached {
+  border-style: solid;
+  border-color: rgba(34, 197, 94, 0.5);
+  color: var(--success);
+  background: rgba(34, 197, 94, 0.08);
+}
+.btn-cache-offline.cached:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* ---- 封面上的缓存进度条 ---- */
+.cache-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 6;
+}
+.cache-progress-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+  transition: width 0.15s ease;
+}
+
+/* ---- 设置页：离线缓存管理 ---- */
+.settings-item-column {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+.offline-cache-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-alt);
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.offline-cache-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.offline-cache-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.offline-cache-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.offline-cache-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.offline-cache-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+.offline-cache-list .btn-sm {
+  flex-shrink: 0;
 }

@@ -872,6 +872,42 @@
         border-radius: 0;
       }
     }
+
+    /* PWA 离线功能：网络状态 + 离线徽标 + 缓存按钮状态 */
+    .net-status {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      color: #22c55e;
+      background: rgba(34, 197, 94, 0.12);
+      border: 1px solid rgba(34, 197, 94, 0.35);
+      white-space: nowrap;
+      user-select: none;
+    }
+    .net-status.offline {
+      color: #f59e0b;
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.35);
+    }
+    .offline-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #7fb6f2;
+      background: rgba(127, 182, 242, 0.12);
+      border: 1px solid rgba(127, 182, 242, 0.4);
+      white-space: nowrap;
+    }
+    #cacheBookBtn.active {
+      color: #22c55e;
+      background: rgba(34, 197, 94, 0.12);
+    }
   </style>
 </head>
 <body>
@@ -928,6 +964,19 @@
             <path d="M12 5v14M5 12h14"/>
           </svg>
         </button>
+
+        <span class="toolbar-divider"></span>
+
+        <!-- 缓存到本地按钮（仅非 PDF 显示；已缓存时变为勾选态） -->
+        <button class="toolbar-btn" id="cacheBookBtn" title="缓存到本地（离线阅读）" style="display:none;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </button>
+        <!-- 离线模式徽标（正在读取 OPFS 本地缓存） -->
+        <span class="offline-badge" id="offlineBadge" style="display:none;">离线缓存</span>
+        <!-- 网络状态 -->
+        <span class="net-status net-status-reader" id="netStatus" title="网络状态">在线</span>
 
         <span class="toolbar-divider" id="pageDivider"></span>
 
@@ -1054,6 +1103,8 @@
   <script src="/vendor/epub.min.js"></script>
 
   <!-- ===== 阅读器逻辑脚本（epub.js 全局暴露 ePub 对象） ===== -->
+  <script src="/js/txt-pagination.js"></script>
+  <script src="/js/opfs-cache.js"></script>
   <script src="/js/reader.js?v=20260815-4"></script>
 </body>
 </html>
