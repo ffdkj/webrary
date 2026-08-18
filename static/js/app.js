@@ -508,6 +508,73 @@
   /* ================================================================
      Settings Page — 设置页
      ================================================================ */
+  // 移动端翻页热区模式定义（与 reader.js / reader.html 的布局约定一致）
+  const TAP_MODES = [
+    { id: 'default', name: '默认模式', desc: '左侧上一页 · 中间菜单 · 右侧下一页' },
+    { id: 'side-next', name: '双侧下一页', desc: '左右大面积下一页 · 底部中间窄条上一页' },
+    { id: 'l-shape', name: 'L 形触控', desc: '上方 1/3 上一页 · 下方 2/3 下一页' }
+  ];
+
+  function getTapMode() {
+    let m = 'default';
+    try {
+      const v = localStorage.getItem('webrary-tap-mode');
+      if (v === 'default' || v === 'side-next' || v === 'l-shape') m = v;
+    } catch (e) { /* ignore */ }
+    return m;
+  }
+
+  // 迷你手机示意图中的区域块（pp=上一页红 / pn=下一页绿 / pt=菜单蓝）
+  function tapPreviewHtml(modeId) {
+    if (modeId === 'side-next') {
+      return '<i class="pn a"></i><i class="pn b"></i><i class="pp"></i><i class="pt"></i>';
+    }
+    if (modeId === 'l-shape') {
+      return '<i class="pp"></i><i class="pn"></i><i class="pt"></i>';
+    }
+    return '<i class="pp"></i><i class="pt"></i><i class="pn"></i>';
+  }
+
+  // 渲染“翻页热区”选择器
+  function renderTapModePicker() {
+    const picker = $('#tapModePicker');
+    if (!picker) return;
+    const current = getTapMode();
+    picker.innerHTML = TAP_MODES.map((m) => `
+      <button type="button" class="tap-mode-option${m.id === current ? ' selected' : ''}"
+              data-mode="${m.id}" data-name="${m.name}">
+        <span class="tap-mode-preview m-${m.id}">${tapPreviewHtml(m.id)}</span>
+        <span class="tap-mode-meta">
+          <span class="tap-mode-name">${m.name}</span>
+          <span class="tap-mode-desc">${m.desc}</span>
+        </span>
+      </button>`).join('');
+  }
+
+  // 绑定“翻页热区”选择交互
+  function bindTapModePicker() {
+    const picker = $('#tapModePicker');
+    if (!picker || picker.__webraryTapBound) return;
+    picker.__webraryTapBound = true;
+    picker.addEventListener('click', (e) => {
+      const opt = e.target.closest('.tap-mode-option');
+      if (!opt || opt.classList.contains('selected')) return;
+      const mode = opt.dataset.mode;
+      try {
+        localStorage.setItem('webrary-tap-mode', mode);
+        // 标记：下次打开书籍时展示热区颜色 4 秒（reader 通过 storage 事件收到同步）
+        localStorage.setItem('webrary-tap-preview', String(Date.now()));
+      } catch (err) { /* ignore */ }
+      picker.querySelectorAll('.tap-mode-option').forEach((o) => o.classList.remove('selected'));
+      opt.classList.add('selected');
+      opt.classList.remove('preview-flash');
+      void opt.offsetWidth; // 重置动画
+      opt.classList.add('preview-flash');
+      window.setTimeout(() => opt.classList.remove('preview-flash'), 4200);
+      showToast(`翻页热区已切换为「${opt.dataset.name}」`, 'success');
+    });
+  }
+
   // 渲染设置页
   async function renderSettingsPage() {
     try {
@@ -518,6 +585,7 @@
       showToast('设置加载失败', 'error');
     }
     renderOfflineCacheManager();
+    renderTapModePicker();
   }
 
   // 渲染“离线缓存管理”区块（OPFS）
@@ -3124,6 +3192,9 @@
         `/reader.html?bookId=${entityId}&title=${title}&author=${author}&ext=${ext}&tocHref=${encodeURIComponent(href)}`
       );
     });
+
+    // 设置页 — 翻页热区模式切换
+    bindTapModePicker();
 
     // 设置页 — 离线缓存管理（删除单个 / 清除全部）
     const ocSection = $('#offlineCacheManager');

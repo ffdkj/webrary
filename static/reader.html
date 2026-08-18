@@ -382,24 +382,72 @@
       touch-action: pan-y;
     }
 
+    /* ==========================================================
+       移动端翻页热区 — 三种模式（默认 / 双侧下一页 / L形触控）
+       子区域由 reader.js 构建，位置随 .tap-mode-* 切换
+       ========================================================== */
     .reader-tap-layer {
       position: absolute;
       inset: 0;
       z-index: 50;
       display: none;
+      touch-action: manipulation;  /* 消除点按延迟，同时保留长按 */
     }
 
     .reader-tap-layer.active {
-      display: flex;
+      display: block;
+    }
+
+    /* 长按选择文字：遮罩让位（display:none），原生选区即可穿透到正文 */
+    .reader-tap-layer.long-press {
+      display: none !important;
     }
 
     .reader-tap-zone {
-      flex: 0 0 30%;
+      position: absolute;
+      z-index: 1;
       -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
     }
 
-    .reader-tap-zone.tap-toggle {
-      flex: 1 1 auto;
+    /* 「唤起菜单」区始终盖在翻页热区之上 */
+    .reader-tap-zone.tap-toggle { z-index: 2; }
+
+    /* --- 默认模式：左 上一页 / 中 菜单 / 右 下一页 --- */
+    .reader-tap-layer.tap-mode-default .tap-prev   { left: 0; top: 0; bottom: 0; width: 30%; }
+    .reader-tap-layer.tap-mode-default .tap-toggle { left: 30%; top: 0; bottom: 0; width: 40%; }
+    .reader-tap-layer.tap-mode-default .tap-next   { right: 0; top: 0; bottom: 0; width: 30%; }
+
+    /* --- 双侧下一页：左右大面积极下一页，底部中间窄条上一页，正中菜单 --- */
+    .reader-tap-layer.tap-mode-side-next .tap-next       { top: 0; bottom: 0; width: 35%; }
+    .reader-tap-layer.tap-mode-side-next .tap-next.first { left: 0; }
+    .reader-tap-layer.tap-mode-side-next .tap-next.last  { right: 0; }
+    .reader-tap-layer.tap-mode-side-next .tap-toggle     { left: 35%; right: 35%; top: 0; height: 85%; }
+    .reader-tap-layer.tap-mode-side-next .tap-prev       { left: 28%; right: 28%; bottom: 0; height: 12%; }
+
+    /* --- L 形触控：上方 1/3 上一页，下方 2/3 下一页，正中菜单 --- */
+    .reader-tap-layer.tap-mode-l-shape .tap-prev   { top: 0; left: 0; right: 0; height: 33.33%; }
+    .reader-tap-layer.tap-mode-l-shape .tap-next   { top: 33.33%; left: 0; right: 0; height: 66.67%; }
+    .reader-tap-layer.tap-mode-l-shape .tap-toggle { left: 30%; right: 30%; top: 30%; bottom: 30%; }
+
+    /* --- 热区预览：切换模式后展示各区域浅色透明颜色 4 秒 --- */
+    .reader-tap-layer.preview .reader-tap-zone { opacity: 0; transition: opacity .3s ease; }
+    .reader-tap-layer.preview.on .reader-tap-zone { opacity: 1; }
+    .reader-tap-layer.preview .tap-prev   { background: rgba(239, 68, 68, 0.28); }
+    .reader-tap-layer.preview .tap-next   { background: rgba(34, 197, 94, 0.28); }
+    .reader-tap-layer.preview .tap-toggle { background: rgba(99, 102, 241, 0.24); }
+    .reader-tap-layer.preview .reader-tap-zone::after {
+      content: attr(data-label);
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.92);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+      white-space: nowrap;
+      pointer-events: none;
     }
 
     /* PDF 阅读容器 */

@@ -128,6 +128,11 @@
   var pdfToggleAt = 0;
   var lastSwipeAt = 0;
   var lastTouchTapAt = 0;
+  var lastLongPressAt = 0;     // 热区长按结束时刻（抑制随后伴随的 click）
+  var tapPressState = null;    // 热区触摸按压状态 {x, y, timer, moved, longPressed}
+  var tapSelecting = false;    // 是否正处于长按选择文字（长按期间禁止滑动翻页）
+  var tapLayerDocBound = false;
+  var tapModeWatchBound = false;
   var toastTimer = null;
 
   /* ================================================================
@@ -1975,6 +1980,8 @@
     }, true);
 
     target.addEventListener('touchmove', function (e) {
+      // 长按选择文字期间：不响应滑动翻页，避免选区拖拽触发翻页
+      if (tapSelecting) return;
       if (!swipeStart || swipeTriggered) return;
       var touch = e.touches && e.touches[0];
       if (!touch) return;
@@ -1991,6 +1998,11 @@
     }, true);
 
     target.addEventListener('touchend', function (e) {
+      // 长按选择文字结束：忽略本次触摸的翻页
+      if (tapSelecting) {
+        clearSwipe();
+        return;
+      }
       if (!swipeStart || !swipeTriggered) {
         clearSwipe();
         return;
@@ -2007,19 +2019,76 @@
     target.addEventListener('touchcancel', clearSwipe, true);
   }
 
-  function ensureEpubTapOverlay() {
-    if (!window.matchMedia || !window.matchMedia('(pointer: coarse)').matches) return;
-    var existing = dom.readerArea.querySelector('.reader-tap-layer');
-    if (existing) {
-      existing.classList.add('active');
-      return;
+  /* ================================================================
+     移动端翻页热区 — 三种模式（默认 / 双侧下一页 / L形触控）
+     长按文字时遮罩自动让位，原生选区可穿透到正文；短按按模式翻页/唤起菜单
+     ================================================================ */
+  var TAP_MODE_KEY = 'webrary-tap-mode';
+  var TAP_PREVIEW_KEY = 'webrary-tap-preview';
+
+  // 读取热区模式（设置页写入 localStorage）；非法值回退默认
+  function getTapMode() {
+    var m = 'default';
+    try {
+      var v = localStorage.getItem(TAP_MODE_KEY);
+      if (v === 'default' || v === 'side-next' || v === 'l-shape') m = v;
+    } catch (e) { /* ignore */ }
+    return m;
+  }
+
+  // 按当前模式重建热区子元素（各区域位置完全由 CSS 按 .tap-mode-* 控制）
+  function buildTapZones(layer) {
+    ['tap-mode-default', 'tap-mode-side-next', 'tap-mode-l-shape'].forEach(function (c) {
+      layer.classList.remove(c);
+    });
+    layer.querySelectorAll('.reader-tap-zone').forEach(function (z) { z.remove(); });
+
+    var mode = getTapMode();
+    layer.classList.add('tap-mode-' + mode);
+
+    var specs = []; // { cls, label }
+    if (mode === 'side-next') {
+      // 图1 双侧下一页：左右大面积极下一页，底部中间窄条上一页，正中菜单
+      specs.push({ cls: 'tap-next first', label: '下一页' });
+      specs.push({ cls: 'tap-prev', label: '上一页' });
+      specs.push({ cls: 'tap-toggle', label: '菜单' });
+      specs.push({ cls: 'tap-next last', label: '下一页' });
+    } else if (mode === 'l-shape') {
+      // 图2 L形触控：上方1/3上一页，下方2/3下一页，正中菜单
+      specs.push({ cls: 'tap-prev', label: '上一页' });
+      specs.push({ cls: 'tap-next', label: '下一页' });
+      specs.push({ cls: 'tap-toggle', label: '菜单' });
+    } else {
+      // 默认：左 上一页 / 中 菜单 / 右 下一页
+      specs.push({ cls: 'tap-prev', label: '上一页' });
+      specs.push({ cls: 'tap-toggle', label: '菜单' });
+      specs.push({ cls: 'tap-next', label: '下一页' });
     }
-    var layer = document.createElement('div');
-    layer.className = 'reader-tap-layer';
+    specs.forEach(function (s) {
+      var zone = document.createElement('div');
+      zone.className = 'reader-tap-zone ' + s.cls;
+      zone.setAttribute('data-label', s.label);
+      layer.appendChild(zone);
+    });
+  }
+
+  // 取消进行中的按压检测；keepState=true 仅清定时器（供滑动时保留状态标记）
+  function cancelTapPress(keepState) {
+    if (!tapPressState) return;
+    if (tapPressState.timer) {
+      window.clearTimeout(tapPressState.timer);
+      tapPressState.timer = null;
+    }
+    if (!keepState) tapPressState = null;
+  }
+
+  // 绑定热区交互：短按翻页/唤起菜单；长按（约0.4s不动）隐藏遮罩让原生选区穿透
+  function bindTapLayer(layer) {
     layer.addEventListener('click', function (e) {
       var zone = e.target.closest('.reader-tap-zone');
       if (!zone || e.defaultPrevented) return;
       if (Date.now() - lastSwipeAt < 600) return;
+      if (Date.now() - lastLongPressAt < 900) return; // 刚长按完，忽略伴随 click
       e.preventDefault();
       e.stopPropagation();
       lastTouchTapAt = Date.now();
@@ -2031,13 +2100,108 @@
         toggleToolbar();
       }
     });
-    ['tap-prev', 'tap-toggle', 'tap-next'].forEach(function (cls) {
-      var zone = document.createElement('div');
-      zone.className = 'reader-tap-zone ' + cls;
-      layer.appendChild(zone);
+
+    layer.addEventListener('touchstart', function (e) {
+      if (!layer.classList.contains('active')) return;
+      var touch = e.touches && e.touches[0];
+      if (!touch) return;
+      cancelTapPress();
+      var press = { x: touch.clientX, y: touch.clientY, timer: null, moved: false, longPressed: false };
+      press.timer = window.setTimeout(function () {
+        if (press.moved) return;
+        press.longPressed = true;
+        tapSelecting = true;
+        lastLongPressAt = Date.now();
+        // 让位：隐藏遮罩后，系统长按选区才落到下方正文，而不是选中遮罩本身
+        layer.classList.add('long-press');
+      }, 400);
+      tapPressState = press;
+    }, true);
+
+    layer.addEventListener('touchmove', function (e) {
+      if (!tapPressState) return;
+      var touch = e.touches && e.touches[0];
+      if (!touch) return;
+      var dx = Math.abs(touch.clientX - tapPressState.x);
+      var dy = Math.abs(touch.clientY - tapPressState.y);
+      if (dx > 18 || dy > 18) {
+        // 滑动/滚动：取消长按判定（保留状态防止误判）
+        tapPressState.moved = true;
+        cancelTapPress(true);
+      }
+    }, true);
+
+    // touchend/touchcancel 绑定在 document：长按期间遮罩可能已 display:none，
+    // 事件仍派发给 touchstart 的目标（遮罩），此处统一恢复遮罩显示
+    if (!tapLayerDocBound) {
+      tapLayerDocBound = true;
+      document.addEventListener('touchend', function () {
+        if (!tapPressState) return;
+        var press = tapPressState;
+        cancelTapPress();
+        if (press.longPressed) {
+          tapSelecting = false;
+          var l = dom.readerArea.querySelector('.reader-tap-layer');
+          if (l) l.classList.remove('long-press');
+        }
+      }, true);
+      document.addEventListener('touchcancel', function () {
+        if (!tapPressState) return;
+        var press = tapPressState;
+        cancelTapPress();
+        if (press.longPressed) {
+          tapSelecting = false;
+          var l = dom.readerArea.querySelector('.reader-tap-layer');
+          if (l) l.classList.remove('long-press');
+        }
+      }, true);
+    }
+  }
+
+  // 设置页切换热区模式后：下次打开书籍展示各区域浅色透明颜色 4 秒
+  function maybeShowTapPreview(layer) {
+    var due = false;
+    try {
+      var at = parseInt(localStorage.getItem(TAP_PREVIEW_KEY) || '0', 10);
+      due = at > 0 && (Date.now() - at) < 3600 * 1000; // 1 小时内切换过才展示
+      if (due) localStorage.removeItem(TAP_PREVIEW_KEY);
+    } catch (e) { /* ignore */ }
+    if (!due || !layer) return;
+    layer.classList.add('preview', 'on');
+    window.setTimeout(function () {
+      layer.classList.remove('on');
+      window.setTimeout(function () { layer.classList.remove('preview'); }, 400);
+    }, 4000);
+  }
+
+  // 阅读器打开期间设置在另一标签页被切换：storage 事件实时重建热区
+  function watchTapModeChanges() {
+    if (tapModeWatchBound) return;
+    tapModeWatchBound = true;
+    window.addEventListener('storage', function (e) {
+      if (!e || (e.key !== TAP_MODE_KEY && e.key !== TAP_PREVIEW_KEY)) return;
+      var layer = dom.readerArea.querySelector('.reader-tap-layer');
+      if (!layer || !layer.classList.contains('active')) return;
+      buildTapZones(layer);
+      if (e.key === TAP_PREVIEW_KEY) maybeShowTapPreview(layer);
     });
+  }
+
+  function ensureEpubTapOverlay() {
+    if (!window.matchMedia || !window.matchMedia('(pointer: coarse)').matches) return;
+    var existing = dom.readerArea.querySelector('.reader-tap-layer');
+    if (existing) {
+      existing.classList.add('active');
+      return;
+    }
+    var layer = document.createElement('div');
+    layer.className = 'reader-tap-layer';
+    buildTapZones(layer);
+    bindTapLayer(layer);
     dom.readerArea.appendChild(layer);
     layer.classList.add('active');
+    watchTapModeChanges();
+    maybeShowTapPreview(layer);
   }
 
   function bindEpubTapListeners() {
