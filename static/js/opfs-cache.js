@@ -133,8 +133,13 @@
   }
 
   function makeCachesBackend() {
-    var prefix = 'webrary-cache://';
-    function keyOf(name) { return prefix + name.replace(/\//g, '__'); }
+    // Cache Storage 要求 key 必须是 http(s) URL（Safari 会直接抛
+    // “URL 不是 http/https”错误）。这里用同源路径构造一个唯一、不可访问的
+    // 虚拟 URL 作为键，仅用于按名字读写，从不真正请求它。
+    var base = (global.location && global.location.origin) || 'https://webrary.invalid';
+    function keyOf(name) {
+      return base + '/__webrary_cache__/' + name;
+    }
     return {
       kind: 'caches',
       writeBytes: function (name, bytes) {

@@ -109,21 +109,29 @@ function fileServer(file, usage, capabilities) {
 /* ---------- 内存 Cache Storage shim ---------- */
 function makeCaches() {
   const stores = new Map(); // cacheName -> Map(key -> Response)
+  // 真实浏览器要求 key 必须是 http(s) URL，这里同样强制校验，防止回归
+  function assertHttp(key) {
+    const s = String(key);
+    if (!/^https?:\/\//i.test(s)) {
+      throw new TypeError(`Request url is not http or https: ${s}`);
+    }
+    return s;
+  }
   return {
     open: async (name) => {
       if (!stores.has(name)) stores.set(name, new Map());
-      return makeCache(stores.get(name));
+      return makeCache(stores.get(name), assertHttp);
     }
   };
-  function makeCache(map) {
+  function makeCache(map, assertHttp) {
     return {
-      put: async (key, response) => { map.set(String(key), response); },
+      put: async (key, response) => { map.set(assertHttp(key), response); },
       match: async (key) => {
-        const r = map.get(String(key));
+        const r = map.get(assertHttp(key));
         return r ? r.clone() : undefined;
       },
       keys: async () => Array.from(map.keys()),
-      delete: async (key) => map.delete(String(key))
+      delete: async (key) => map.delete(assertHttp(key))
     };
   }
 }
@@ -155,6 +163,7 @@ function loadLib(env) {
     Blob: globalThis.Blob,
     fetch: globalThis.fetch.bind(globalThis),
     navigator: { storage },
+    location: { origin: 'https://test.local' },
     setTimeout,
     clearTimeout
   };
