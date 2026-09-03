@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from bs4 import BeautifulSoup
-from ebooklib import ITEM_DOCUMENT, read_epub
+from ebooklib import ITEM_DOCUMENT
+from ebooklib.epub import read_epub
 
 try:
     import chromadb

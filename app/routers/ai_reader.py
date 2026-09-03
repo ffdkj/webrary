@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from ..auth import get_current_user_id
 from ..database import fetch_one
 from ..schemas import fail, ok
-from .rag import get_book_rag_index
+from ..services.rag import get_book_rag_index
 
 router = APIRouter(
     prefix="/api/ai",
