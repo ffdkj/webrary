@@ -34,6 +34,8 @@ curl -X POST http://127.0.0.1:8000/api/ai/books/1/index \
 
 ## 5. 提问
 
+> 如果没有 `DEEPSEEK_API_KEY`，可在 `.env` 设置 `AGENT_MOCK_MODE=true`，`/ask` 会直接返回检索到的片段，方便演示。
+
 ```bash
 curl -X POST http://127.0.0.1:8000/api/ai/books/1/ask \
   -H 'Content-Type: application/json' \
