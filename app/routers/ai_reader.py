@@ -29,6 +29,8 @@ SYSTEM_PROMPT = """你是 webrary 的 AI 读书助手。
 如果片段不足以回答，请明确说“根据目前索引的内容无法回答”。
 回答使用中文，保持简洁。"""
 
+MOCK_MODE = os.getenv("AGENT_MOCK_MODE", "").lower() in ("1", "true", "yes")
+
 
 class AskRequest(BaseModel):
     question: str
@@ -113,6 +115,32 @@ def ask_book(book_id: int, req: AskRequest):
     if not req.question.strip():
         return fail("问题不能为空")
     try:
+        # Mock 模式：没有 DeepSeek Key 时也能演示 RAG 检索。
+        if MOCK_MODE and not os.getenv("DEEPSEEK_API_KEY", "").strip():
+            chunks = get_book_rag_index().search(
+                req.question.strip(), book_id=book_id, top_k=req.top_k
+            )
+            answer = (
+                "[Mock 模式] 未配置 DEEPSEEK_API_KEY，以下为检索到的片段：\n\n"
+                + "\n\n".join(c.get("text", "")[:300] for c in chunks[:2])
+                if chunks
+                else "[Mock 模式] 未配置 DEEPSEEK_API_KEY，且没有检索到相关内容。"
+            )
+            return ok(
+                {
+                    "answer": answer,
+                    "bookId": book_id,
+                    "title": book["title"],
+                    "sources": [
+                        {
+                            "text": c.get("text", "")[:200],
+                            "score": c.get("score"),
+                        }
+                        for c in chunks
+                    ],
+                }
+            )
+
         graph = _build_graph()
         result = graph.invoke(
             {
