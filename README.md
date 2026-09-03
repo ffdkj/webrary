@@ -11,6 +11,15 @@ Webrary 的 FastAPI 后端版本，包含完整前端静态资源，可直接部
 - 会话登录与注册开关设置
 - PWA 离线阅读：EPUB / MOBI / AZW3 / FB2 / TXT 可缓存到浏览器本地
   （Origin Private File System），断网也能阅读；PDF 暂不支持离线缓存
+- **AI 读书助手（RAG 问答）**：对 EPUB/TXT 建立向量索引，基于 LangGraph + Chroma + DeepSeek 回答问题
+
+## AI 读书助手（RAG）
+
+- 对上传的 EPUB/TXT 进行分块、Embedding、Chroma 向量化。
+- 通过 `POST /api/ai/books/{bookId}/index` 为单本书建索引。
+- 通过 `POST /api/ai/books/{bookId}/ask` 提问，LangGraph 两节点图先检索再生成。
+- 主 LLM：DeepSeek；Embedding：Gemini 多 Key 轮换，失败自动回退本地/hash。
+- 额外依赖：`pip install -r requirements-agent.txt`；配置见 `.env.example`。
 
 ## PWA 离线缓存（OPFS）
 
@@ -64,6 +73,10 @@ export SESSION_SECRET="a-long-random-secret"
 | `WEBRARY_DB` | `data/webrary.db` | 数据库文件路径 |
 | `WEBRARY_UPLOAD_DIR` | `data/uploads` | 上传文件目录 |
 | `WEBRARY_STATIC_DIR` | `static` | 前端静态资源目录 |
+| `DEEPSEEK_API_KEY` | - | AI 问答主 LLM Key |
+| `GEMINI_API_KEYS` | - | Embedding 多 Key（逗号分隔） |
+| `RAG_CHUNK_SIZE` | `800` | RAG 分块大小 |
+| `RAG_CHUNK_OVERLAP` | `100` | RAG 分块重叠 |
 
 ## 测试
 

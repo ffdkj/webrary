@@ -1,0 +1,17 @@
+# AI Reader / RAG dependencies for webrary
+# Install with: pip install -r requirements-agent.txt
+-r requirements.txt
+
+# LLM / Agent
+langgraph>=0.2.0
+langchain-openai>=0.2.0
+langchain-core>=0.3.0
+
+# Vector store
+chromadb>=0.5.0
+
+# Env file support
+python-dotenv>=1.0.0
+
+# Optional local embedding fallback (large download; can skip if Gemini keys are set)
+# sentence-transformers>=3.0.0

@@ -3,6 +3,12 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -11,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import STATIC_DIR, UPLOAD_DIR
 from .database import db, fetch_all, next_id, now_ms
 from .migrations import ensure_schema
-from .routers import auth, books, bookshelves, settings, zlibrary
+from .routers import ai_reader, auth, books, bookshelves, settings, zlibrary
 from .schemas import fail
 from .services.ebook import ensure_epub_conversion
 
@@ -63,6 +69,7 @@ app.include_router(bookshelves.router)
 app.include_router(books.router)
 app.include_router(zlibrary.router)
 app.include_router(settings.router)
+app.include_router(ai_reader.router)
 
 
 @app.exception_handler(HTTPException)
