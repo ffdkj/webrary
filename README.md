@@ -20,6 +20,7 @@ Webrary 的 FastAPI 后端版本，包含完整前端静态资源，可直接部
 - 通过 `POST /api/ai/books/{bookId}/ask` 提问，LangGraph 两节点图先检索再生成。
 - 主 LLM：DeepSeek；Embedding：Gemini 多 Key 轮换，失败自动回退本地/hash。
 - 额外依赖：`pip install -r requirements-agent.txt`；配置见 `.env.example`。
+- 接口演示见 [DEMO.md](DEMO.md)。
 
 ## PWA 离线缓存（OPFS）
 
