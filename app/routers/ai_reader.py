@@ -56,7 +56,7 @@ def _build_graph():
         from langchain_core.tools import tool
         from langchain_openai import ChatOpenAI
         from langgraph.graph import END, StateGraph
-        from typing_extensions import TypedDict
+        from typing import TypedDict
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError("缺少 LangGraph/LangChain 依赖，请先 pip install -r requirements-agent.txt") from exc
 
