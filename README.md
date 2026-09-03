@@ -1,5 +1,7 @@
 # Webrary FastAPI
 
+[![CI](https://github.com/ffdkj/webrary/actions/workflows/ci.yml/badge.svg)](https://github.com/ffdkj/webrary/actions/workflows/ci.yml)
+
 Webrary 的 FastAPI 后端版本，包含完整前端静态资源，可直接部署使用。
 
 ## 功能
